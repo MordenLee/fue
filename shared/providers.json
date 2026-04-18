@@ -1,0 +1,345 @@
+[
+  {
+    "name": "OpenAI",
+    "interface_type": "openai",
+    "api_base_url": "https://api.openai.com/v1",
+    "api_key": "",
+    "description": "OpenAI 官方 API",
+    "is_enabled": true,
+    "models": [
+      {
+        "api_name": "gpt-4o",
+        "display_name": "GPT-4o",
+        "series": "GPT-4o",
+        "model_type": "chat",
+        "capabilities": ["vision", "function_calling"],
+        "context_length": 128
+      },
+      {
+        "api_name": "gpt-4o-mini",
+        "display_name": "GPT-4o mini",
+        "series": "GPT-4o",
+        "model_type": "chat",
+        "capabilities": ["vision", "function_calling"],
+        "context_length": 128
+      },
+      {
+        "api_name": "o1",
+        "display_name": "o1",
+        "series": "o1",
+        "model_type": "chat",
+        "capabilities": ["reasoning"],
+        "context_length": 200
+      },
+      {
+        "api_name": "o1-mini",
+        "display_name": "o1-mini",
+        "series": "o1",
+        "model_type": "chat",
+        "capabilities": ["reasoning"],
+        "context_length": 128
+      },
+      {
+        "api_name": "o3-mini",
+        "display_name": "o3-mini",
+        "series": "o3",
+        "model_type": "chat",
+        "capabilities": ["reasoning"],
+        "context_length": 200
+      },
+      {
+        "api_name": "text-embedding-3-large",
+        "display_name": "text-embedding-3-large",
+        "series": "Embedding",
+        "model_type": "embedding",
+        "capabilities": [],
+        "context_length": 8
+      },
+      {
+        "api_name": "text-embedding-3-small",
+        "display_name": "text-embedding-3-small",
+        "series": "Embedding",
+        "model_type": "embedding",
+        "capabilities": [],
+        "context_length": 8
+      }
+    ]
+  },
+  {
+    "name": "Anthropic",
+    "interface_type": "anthropic",
+    "api_base_url": "https://api.anthropic.com",
+    "api_key": "",
+    "description": "Anthropic 官方 API",
+    "is_enabled": true,
+    "models": [
+      {
+        "api_name": "claude-opus-4-5",
+        "display_name": "Claude Opus 4.5",
+        "series": "Claude 4",
+        "model_type": "chat",
+        "capabilities": ["vision", "function_calling"],
+        "context_length": 200
+      },
+      {
+        "api_name": "claude-3-5-sonnet-20241022",
+        "display_name": "Claude 3.5 Sonnet",
+        "series": "Claude 3.5",
+        "model_type": "chat",
+        "capabilities": ["vision", "function_calling"],
+        "context_length": 200
+      },
+      {
+        "api_name": "claude-3-5-haiku-20241022",
+        "display_name": "Claude 3.5 Haiku",
+        "series": "Claude 3.5",
+        "model_type": "chat",
+        "capabilities": ["vision", "function_calling"],
+        "context_length": 200
+      },
+      {
+        "api_name": "claude-3-opus-20240229",
+        "display_name": "Claude 3 Opus",
+        "series": "Claude 3",
+        "model_type": "chat",
+        "capabilities": ["vision", "function_calling"],
+        "context_length": 200
+      }
+    ]
+  },
+  {
+    "name": "DeepSeek",
+    "interface_type": "openai_compatible",
+    "api_base_url": "https://api.deepseek.com/v1",
+    "api_key": "",
+    "description": "深度求索 DeepSeek API",
+    "is_enabled": true,
+    "models": [
+      {
+        "api_name": "deepseek-chat",
+        "display_name": "DeepSeek-V3",
+        "series": "DeepSeek-V3",
+        "model_type": "chat",
+        "capabilities": ["function_calling"],
+        "context_length": 64
+      },
+      {
+        "api_name": "deepseek-reasoner",
+        "display_name": "DeepSeek-R1",
+        "series": "DeepSeek-R1",
+        "model_type": "chat",
+        "capabilities": ["reasoning"],
+        "context_length": 64
+      }
+    ]
+  },
+  {
+    "name": "Moonshot AI",
+    "interface_type": "openai_compatible",
+    "api_base_url": "https://api.moonshot.cn/v1",
+    "api_key": "",
+    "description": "月之暗面 Kimi API",
+    "is_enabled": true,
+    "models": [
+      {
+        "api_name": "moonshot-v1-8k",
+        "display_name": "Kimi (8k)",
+        "series": "Moonshot",
+        "model_type": "chat",
+        "capabilities": ["function_calling"],
+        "context_length": 8
+      },
+      {
+        "api_name": "moonshot-v1-32k",
+        "display_name": "Kimi (32k)",
+        "series": "Moonshot",
+        "model_type": "chat",
+        "capabilities": ["function_calling"],
+        "context_length": 32
+      },
+      {
+        "api_name": "moonshot-v1-128k",
+        "display_name": "Kimi (128k)",
+        "series": "Moonshot",
+        "model_type": "chat",
+        "capabilities": ["function_calling"],
+        "context_length": 128
+      }
+    ]
+  },
+  {
+    "name": "智谱 AI",
+    "interface_type": "openai_compatible",
+    "api_base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "api_key": "",
+    "description": "智谱 AI GLM 系列模型",
+    "is_enabled": true,
+    "models": [
+      {
+        "api_name": "glm-4-plus",
+        "display_name": "GLM-4-Plus",
+        "series": "GLM-4",
+        "model_type": "chat",
+        "capabilities": ["vision", "function_calling"],
+        "context_length": 128
+      },
+      {
+        "api_name": "glm-4-flash",
+        "display_name": "GLM-4-Flash",
+        "series": "GLM-4",
+        "model_type": "chat",
+        "capabilities": ["function_calling"],
+        "context_length": 128
+      },
+      {
+        "api_name": "glm-4v",
+        "display_name": "GLM-4V",
+        "series": "GLM-4",
+        "model_type": "chat",
+        "capabilities": ["vision"],
+        "context_length": 8
+      },
+      {
+        "api_name": "embedding-3",
+        "display_name": "Embedding-3",
+        "series": "Embedding",
+        "model_type": "embedding",
+        "capabilities": [],
+        "context_length": 8
+      }
+    ]
+  },
+  {
+    "name": "Ollama",
+    "interface_type": "ollama",
+    "api_base_url": "http://localhost:11434",
+    "api_key": "",
+    "description": "本地 Ollama 服务",
+    "is_enabled": true,
+    "models": [
+      {
+        "api_name": "llama3.2",
+        "display_name": "Llama 3.2",
+        "series": "Llama 3",
+        "model_type": "chat",
+        "capabilities": ["function_calling"],
+        "context_length": 128
+      },
+      {
+        "api_name": "qwen2.5:7b",
+        "display_name": "Qwen 2.5 7B",
+        "series": "Qwen 2.5",
+        "model_type": "chat",
+        "capabilities": ["function_calling"],
+        "context_length": 128
+      },
+      {
+        "api_name": "deepseek-r1:7b",
+        "display_name": "DeepSeek-R1 7B",
+        "series": "DeepSeek-R1",
+        "model_type": "chat",
+        "capabilities": ["reasoning"],
+        "context_length": 128
+      },
+      {
+        "api_name": "nomic-embed-text",
+        "display_name": "nomic-embed-text",
+        "series": "Embedding",
+        "model_type": "embedding",
+        "capabilities": [],
+        "context_length": 8
+      },
+      {
+        "api_name": "mxbai-embed-large",
+        "display_name": "mxbai-embed-large",
+        "series": "Embedding",
+        "model_type": "embedding",
+        "capabilities": [],
+        "context_length": 512
+      }
+    ]
+  },
+  {
+    "name": "Groq",
+    "interface_type": "openai_compatible",
+    "api_base_url": "https://api.groq.com/openai/v1",
+    "api_key": "",
+    "description": "Groq 超高速推理 API",
+    "is_enabled": true,
+    "models": [
+      {
+        "api_name": "llama-3.3-70b-versatile",
+        "display_name": "Llama 3.3 70B",
+        "series": "Llama 3",
+        "model_type": "chat",
+        "capabilities": ["function_calling"],
+        "context_length": 128
+      },
+      {
+        "api_name": "deepseek-r1-distill-llama-70b",
+        "display_name": "DeepSeek-R1 Distill 70B",
+        "series": "DeepSeek-R1",
+        "model_type": "chat",
+        "capabilities": ["reasoning"],
+        "context_length": 128
+      },
+      {
+        "api_name": "gemma2-9b-it",
+        "display_name": "Gemma 2 9B",
+        "series": "Gemma",
+        "model_type": "chat",
+        "capabilities": [],
+        "context_length": 8
+      }
+    ]
+  }
+  ,
+  {
+    "name": "siliconflow",
+    "interface_type": "openai_compatible",
+    "api_base_url": "https://api.siliconflow.cn/v1",
+    "api_key": "",
+    "description": "硅基流动",
+    "is_enabled": true,
+    "models": [
+    {
+      "api_name": "Qwen/Qwen3-Reranker-8B",
+      "display_name": "Qwen3-Reranker-8B",
+      "series": "Qwen 3.5",
+      "model_type": "reranking",
+      "capabilities": [],
+      "context_length": 32
+    },
+    {
+      "api_name": "Qwen/Qwen3-Embedding-8B",
+      "display_name": "Qwen3-Embedding-8B",
+      "series": "Qwen 3.5",
+      "model_type": "embedding",
+      "capabilities": [],
+      "context_length": 32
+    },
+    {
+      "api_name": "Qwen/Qwen3.5-397B-A17B",
+      "display_name": "Qwen 3.5",
+      "series": "Qwen 3.5",
+      "model_type": "chat",
+      "capabilities": [
+        "reasoning",
+        "vision",
+        "function_calling"
+      ],
+      "context_length": 160
+    },
+    {
+      "api_name": "Pro/deepseek-ai/DeepSeek-V3.2",
+      "display_name": "deepseek-V3.2",
+      "series": "deepseek",
+      "model_type": "chat",
+      "capabilities": [
+        "function_calling"
+      ],
+      "context_length": 160
+    }
+]
+  }
+]

@@ -1,0 +1,128 @@
+@import 'tailwindcss';
+
+/* ─── Tailwind v4: use .dark class for dark mode ─── */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── Theme variables ─── */
+:root {
+  --scrollbar-thumb: rgba(0, 0, 0, 0.12);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.2);
+}
+
+.dark {
+  --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Allow text selection inside chat message bubbles, markdown content, and search results */
+.markdown-body,
+.message-selectable,
+.select-text {
+  user-select: text;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ─── Electron drag region for frameless window ─── */
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.drag-region * {
+  -webkit-app-region: no-drag;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Animate-in utility */
+@keyframes slide-in-from-top {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation: slide-in-from-top 0.2s ease-out;
+}
+
+/* Prose dark overrides for markdown */
+.prose-invert a {
+  color: #60a5fa;
+}
+
+.prose-invert code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+.prose-invert pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.versions li {
+  display: block;
+  float: left;
+  border-right: 1px solid var(--ev-c-gray-1);
+  padding: 0 20px;
+  font-size: 14px;
+  line-height: 14px;
+  opacity: 0.8;
+  &:last-child {
+    border: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .text {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 620px) {
+  .versions {
+    display: none;
+  }
+}
+
+@media (max-width: 350px) {
+  .tip,
+  .actions {
+    display: none;
+  }
+}

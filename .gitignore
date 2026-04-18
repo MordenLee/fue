@@ -1,0 +1,41 @@
+# ── Python ──────────────────────────────────────────────────────────────────
+.venv/
+backend/venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# ── Backend runtime data ─────────────────────────────────────────────────────
+backend/app.db
+backend/chroma_data/
+backend/logs/
+
+# ── Node / Electron ──────────────────────────────────────────────────────────
+node_modules/
+package-lock.json
+
+# ── Build outputs ────────────────────────────────────────────────────────────
+frontend/dist/
+frontend/out/
+frontend/build/python-runtime/
+*.tsbuildinfo
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+*.log.*
+logs/
+electron_debug.log
+
+# ── Temp / debug directories ─────────────────────────────────────────────────
+.tmp_*/
+
+# ── Environment files ────────────────────────────────────────────────────────
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# ── OS / Editor ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/settings.json
