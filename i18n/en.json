@@ -278,6 +278,7 @@
     "interface_type": "Interface type",
     "interface_openai_compatible": "OpenAI Compatible",
     "provider_name_placeholder": "Provider name",
+    "api_key_placeholder": "Leave blank if not configured",
     "api_base": "API Base URL",
     "config_saved": "Provider configuration saved",
     "test_connectivity": "Test Connectivity",

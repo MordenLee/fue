@@ -99,7 +99,7 @@ export function ProviderConfig({ provider, models, onUpdate, onToggle, onDelete 
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               type={showKey ? 'text' : 'password'}
-              placeholder="sk-..."
+              placeholder={t('providers.api_key_placeholder')}
             />
             <button
               type="button"

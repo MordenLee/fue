@@ -72,6 +72,32 @@ with engine.connect() as conn:
 # ---------------------------------------------------------------------------
 _PROVIDERS_JSON = Path(__file__).resolve().parent.parent / "shared" / "providers.json"
 
+_KNOWN_COMPROMISED_PRESET_KEYS = frozenset({
+    "sk-bisxyxtfvgwdddldvhoevzxqasahghfkekkujchpifewzycn",
+})
+
+
+def _should_clear_seeded_api_key(existing: Provider, preset_api_key: str) -> bool:
+    """Clear stale preset keys that were seeded by an older leaked preset file.
+
+    We only auto-clear when the current preset intentionally leaves api_key blank.
+    To avoid removing user-entered keys, we limit the cleanup to either:
+    1. known compromised leaked keys, or
+    2. untouched seed records whose timestamps never diverged after creation.
+    """
+    if preset_api_key or not existing.api_key:
+        return False
+
+    if existing.api_key in _KNOWN_COMPROMISED_PRESET_KEYS:
+        return True
+
+    created_at = getattr(existing, "created_at", None)
+    updated_at = getattr(existing, "updated_at", None)
+    if created_at is None or updated_at is None:
+        return False
+
+    return abs((updated_at - created_at).total_seconds()) < 1
+
 def _auto_seed() -> None:
     if not _PROVIDERS_JSON.exists():
         logger.warning("shared/providers.json not found, skipping auto-seed.")
@@ -81,7 +107,7 @@ def _auto_seed() -> None:
         data: list[dict] = json.loads(_PROVIDERS_JSON.read_text(encoding="utf-8"))
         # Names the user explicitly deleted — never recreate these
         deleted_names = {r.name for r in db.query(DeletedProvider).all()}
-        created_p = created_m = updated_keys = 0
+        created_p = created_m = updated_keys = cleared_keys = 0
         max_order = db.query(func.max(Provider.sort_order)).scalar() or 0
         for entry in data:
             models_data: list[dict] = entry.pop("models", [])
@@ -90,6 +116,9 @@ def _auto_seed() -> None:
                 continue
             existing = db.query(Provider).filter(Provider.name == entry["name"]).first()
             if existing:
+                if _should_clear_seeded_api_key(existing, api_key):
+                    existing.api_key = ""
+                    cleared_keys += 1
                 # 已存在：仅当 JSON 里的 api_key 非空时更新它
                 if api_key and existing.api_key != api_key:
                     existing.api_key = api_key
@@ -105,10 +134,10 @@ def _auto_seed() -> None:
                 created_m += 1
             created_p += 1
         db.commit()
-        if created_p or updated_keys:
+        if created_p or updated_keys or cleared_keys:
             logger.info(
-                "Auto-seed: %d providers created, %d models created, %d api_keys updated.",
-                created_p, created_m, updated_keys,
+                "Auto-seed: %d providers created, %d models created, %d api_keys updated, %d stale preset keys cleared.",
+                created_p, created_m, updated_keys, cleared_keys,
             )
     except Exception:
         db.rollback()

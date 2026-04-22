@@ -17,6 +17,8 @@ package-lock.json
 
 # ── Build outputs ────────────────────────────────────────────────────────────
 frontend/dist/
+frontend/dist-clean/
+frontend/dist-staging-win/
 frontend/out/
 frontend/build/python-runtime/
 *.tsbuildinfo

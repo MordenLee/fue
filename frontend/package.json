@@ -11,16 +11,19 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "clean:dist-test-data": "node ./scripts/clean-dist-test-data.mjs",
     "build:python-runtime": "node ./scripts/prepare-python-runtime.mjs",
+    "build:win:staging": "npx electron-builder --win --config.directories.output=dist-staging-win",
+    "build:win:installer": "node ./scripts/build-win-installer.mjs",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "check:providers": "node ./scripts/check-providers-clean.mjs",
-    "build:unpack": "npm run check:providers && npm run build && npm run build:python-runtime && electron-builder --dir",
-    "build:win": "npm run check:providers && npm run build && npm run build:python-runtime && electron-builder --win",
-    "build:mac": "npm run check:providers && electron-vite build && npm run build:python-runtime && electron-builder --mac",
-    "build:linux": "npm run check:providers && electron-vite build && npm run build:python-runtime && electron-builder --linux"
+    "build:unpack": "npm run clean:dist-test-data && npm run check:providers && npm run build && npm run build:python-runtime && electron-builder --dir",
+    "build:win": "npm run build:win:installer",
+    "build:mac": "npm run clean:dist-test-data && npm run check:providers && electron-vite build && npm run build:python-runtime && electron-builder --mac",
+    "build:linux": "npm run clean:dist-test-data && npm run check:providers && electron-vite build && npm run build:python-runtime && electron-builder --linux"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

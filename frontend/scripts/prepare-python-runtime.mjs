@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -63,6 +63,21 @@ function shouldSkipSitePackages(src) {
   return false
 }
 
+function replaceInFile(filePath, replacements) {
+  if (!existsSync(filePath)) return
+
+  const original = readFileSync(filePath, 'utf8')
+  let next = original
+
+  for (const [searchValue, replaceValue] of replacements) {
+    next = next.split(searchValue).join(replaceValue)
+  }
+
+  if (next !== original) {
+    writeFileSync(filePath, next, 'utf8')
+  }
+}
+
 rmSync(outputDir, { recursive: true, force: true })
 mkdirSync(outputDir, { recursive: true })
 
@@ -86,6 +101,18 @@ if (existsSync(venvShare)) {
     recursive: true,
     filter: (src) => !shouldSkipSitePackages(src)
   })
+}
+
+// Neutralize shipped example tokens that look like real OpenAI-style secrets.
+for (const relativePath of [
+  join('Lib', 'site-packages', 'langchain', 'embeddings', 'base.py'),
+  join('Lib', 'site-packages', 'langsmith', 'client.py'),
+  join('Lib', 'site-packages', 'langsmith', 'async_client.py')
+]) {
+  replaceInFile(join(outputDir, relativePath), [
+    ['sk-...', 'YOUR_API_KEY'],
+    ['OPENAI_API_KEY', 'MODEL_API_KEY']
+  ])
 }
 
 console.log(`Portable Python runtime prepared at ${outputDir}`)

@@ -147,7 +147,7 @@ class ProviderCreate(BaseModel):
     api_base_url: Optional[str] = Field(
         default=None, examples=["https://api.openai.com/v1"]
     )
-    api_key: Optional[str] = Field(default=None, examples=["sk-..."])
+    api_key: Optional[str] = Field(default=None, examples=["YOUR_API_KEY"])
     description: Optional[str] = Field(default=None, examples=["官方 OpenAI 账号"])
     is_enabled: bool = Field(default=True)
 

@@ -278,6 +278,7 @@
     "interface_type": "接口类型",
     "interface_openai_compatible": "OpenAI 兼容",
     "provider_name_placeholder": "供应商名称",
+    "api_key_placeholder": "留空表示未配置",
     "api_base": "API 地址",
     "config_saved": "供应商配置已保存",
     "test_connectivity": "测试连通性",

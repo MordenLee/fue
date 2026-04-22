@@ -181,7 +181,7 @@ async def test_provider(
             # Use raw openai client directly — more robust with third-party proxies
             from openai import AsyncOpenAI
             client = AsyncOpenAI(
-                api_key=provider.api_key or "sk-placeholder",
+                api_key=provider.api_key or "placeholder-api-key",
                 base_url=provider.api_base_url or "https://api.openai.com/v1",
             )
             await client.chat.completions.create(

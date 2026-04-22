@@ -68,7 +68,7 @@ export function ProviderForm({ open, onClose, onSubmit }: ProviderFormProps) {
           <Select value={interfaceType} onValueChange={(v) => setInterfaceType(v as InterfaceType)} options={interfaceTypes} />
         </FormField>
         <FormField label="API Key">
-          <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} type="password" placeholder="sk-..." />
+          <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} type="password" placeholder={t('providers.api_key_placeholder')} />
         </FormField>
         <FormField label={t('providers.api_base')}>
           <Input value={apiBase} onChange={(e) => setApiBase(e.target.value)} placeholder="https://api.openai.com" />
