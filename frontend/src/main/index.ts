@@ -220,12 +220,16 @@ async function startBackend(): Promise<void> {
 
   backendStartupTimer = setTimeout(() => {
     failBackendStartup('后端启动超时。请检查安装目录是否完整，或重新安装应用。')
-  }, 30000)
+  }, 90000)
 
   // In production, override PYTHONHOME/PYTHONPATH to point exclusively at the
   // bundled runtime, preventing any system Python installation from interfering.
   const productionPythonEnv = pythonHome
-    ? { PYTHONHOME: pythonHome, PYTHONPATH: '' }
+    ? {
+        PYTHONHOME: pythonHome,
+        PYTHONPATH: '',
+        PYTHONPYCACHEPREFIX: join(app.getPath('userData'), 'pycache')
+      }
     : {}
 
   backendProcess = spawn(pythonCmd, ['main.py'], {
@@ -303,7 +307,7 @@ function createWindow(): void {
     ...(process.platform === 'win32'
       ? { titleBarOverlay: { color: '#171717', symbolColor: '#a3a3a3', height: 28 } }
       : {}),
-    ...(process.platform === 'linux' ? { icon } : {}),
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
