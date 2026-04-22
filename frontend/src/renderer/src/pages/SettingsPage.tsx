@@ -163,7 +163,29 @@ export function SettingsPage() {
                   />
                 </FormField>
                 <FormField label={t('settings.embed_max_concurrency')} description={t('settings_page.embed_max_concurrency_desc')}>
-                  <NumberInput className="w-28" value={current.embed_max_concurrency ?? 4} onChange={(v) => handleChange({ embed_max_concurrency: v })} min={1} max={16} />
+                  <NumberInput
+                    className="w-28"
+                    value={current.embed_max_concurrency ?? 4}
+                    onChange={(v) => handleChange({ embed_max_concurrency: v })}
+                    min={1}
+                    max={32}
+                    disabled={current.embed_use_model_qps ?? false}
+                  />
+                </FormField>
+                <FormField label={t('settings.embed_use_model_qps')} description={t('settings_page.embed_use_model_qps_desc')}>
+                  <Switch
+                    checked={current.embed_use_model_qps ?? false}
+                    onCheckedChange={(v) => handleChange({ embed_use_model_qps: v })}
+                  />
+                </FormField>
+                <FormField label={t('settings.kb_index_max_workers')} description={t('settings_page.kb_index_max_workers_desc')}>
+                  <NumberInput
+                    className="w-28"
+                    value={current.kb_index_max_workers ?? 4}
+                    onChange={(v) => handleChange({ kb_index_max_workers: v })}
+                    min={1}
+                    max={16}
+                  />
                 </FormField>
               </div>
             </section>

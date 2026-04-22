@@ -25,6 +25,8 @@ def _to_out(data: dict[str, str]) -> SettingsOut:
     return SettingsOut(
         language=data["language"],
         embed_max_concurrency=int(data["embed_max_concurrency"]),
+        embed_use_model_qps=data.get("embed_use_model_qps", "false") == "true",
+        kb_index_max_workers=int(data.get("kb_index_max_workers", DEFAULTS["kb_index_max_workers"])),
         rag_top_k=int(data["rag_top_k"]),
         default_embed_model_id=int(raw_embed_id) if raw_embed_id else None,
         pdf_parser=data["pdf_parser"],

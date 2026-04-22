@@ -52,7 +52,7 @@ function CodeBlock({ children, className }: { children: React.ReactNode; classNa
   )
 }
 
-export function MarkdownLatexRenderer({ content, isStreaming, className = '' }: MarkdownLatexRendererProps) {
+export function MarkdownLatexRenderer({ content, isStreaming, className = '', onCiteClick, knownCiteRefs }: MarkdownLatexRendererProps) {
   // ---------------------------------------------------------------------------
   // KEY FIX: Convert [N] / [CITE-N] to standard Markdown inline links.
   //
@@ -65,13 +65,23 @@ export function MarkdownLatexRenderer({ content, isStreaming, className = '' }: 
   // ---------------------------------------------------------------------------
   const processedContent = useMemo(() => {
     return content.replace(
-      /\[(?:CITE-)?(\d+)\]/g,
+      /\[(?:CITE-)?(\d+)\](?!\(#cite-\d+\))/g,
       (_, n) => `[${n}](#cite-${n})`
     )
   }, [content])
 
-  const remarkPlugins = useMemo(() => [remarkMath, remarkGfm], [])
-  const rehypePlugins = useMemo(() => [rehypeKatex, rehypeHighlight], [])
+  const remarkPlugins = useMemo(
+    () => (isStreaming ? [remarkGfm] : [remarkMath, remarkGfm]),
+    [isStreaming]
+  )
+  const rehypePlugins = useMemo(
+    () => (
+      isStreaming
+        ? [rehypeHighlight]
+        : [[rehypeKatex, { throwOnError: false, strict: 'ignore' }], rehypeHighlight]
+    ),
+    [isStreaming]
+  )
 
   return (
     <div className={`markdown-body prose prose-invert prose-sm max-w-none
@@ -88,7 +98,7 @@ export function MarkdownLatexRenderer({ content, isStreaming, className = '' }: 
     >
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
+        rehypePlugins={rehypePlugins as never[]}
         components={{
           code({ className: cn, children, ...props }) {
             const isBlock = cn?.startsWith('language-')
@@ -104,10 +114,17 @@ export function MarkdownLatexRenderer({ content, isStreaming, className = '' }: 
             if (href?.startsWith('#cite-')) {
               const num = parseInt(href.slice(6))
               if (!isNaN(num)) {
+                const isKnown = !knownCiteRefs || knownCiteRefs.has(num)
                 return (
-                  <sup className={CITE_SUP_CLASS} title={`引用 [${num}]`}>
+                  <button
+                    type="button"
+                    onClick={() => isKnown && onCiteClick?.(num)}
+                    className={CITE_SUP_CLASS}
+                    title={`引用 [${num}]`}
+                    aria-label={`引用 ${num}`}
+                  >
                     [{num}]
-                  </sup>
+                  </button>
                 )
               }
             }

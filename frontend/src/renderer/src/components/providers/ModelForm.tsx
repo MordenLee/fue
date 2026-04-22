@@ -27,7 +27,7 @@ export function ModelForm({ open, onClose, onSubmit, providerId, initialData }: 
   const [displayName, setDisplayName] = useState(initialData?.display_name ?? '')
   const [series, setSeries] = useState(initialData?.series ?? '')
   const [modelType, setModelType] = useState<ModelType>(initialData?.model_type ?? 'chat')
-  const [contextLength, setContextLength] = useState(initialData?.context_length ?? 4096)
+  const [contextLength, setContextLength] = useState(initialData?.context_length ?? 128)
   const [qps, setQps] = useState<number | null>(initialData?.qps ?? null)
   const [capabilities, setCapabilities] = useState<Capability[]>(initialData?.capabilities ?? [])
   const [loading, setLoading] = useState(false)
@@ -38,7 +38,7 @@ export function ModelForm({ open, onClose, onSubmit, providerId, initialData }: 
       setDisplayName(initialData?.display_name ?? '')
       setSeries(initialData?.series ?? '')
       setModelType(initialData?.model_type ?? 'chat')
-      setContextLength(initialData?.context_length ?? 4096)
+      setContextLength(initialData?.context_length ?? 128)
       setQps(initialData?.qps ?? null)
       setCapabilities(initialData?.capabilities ?? [])
     }

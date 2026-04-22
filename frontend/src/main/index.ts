@@ -29,6 +29,7 @@ let resolveBackendReady: (port: number) => void
 let rejectBackendReady: (error: Error) => void
 let backendReadySettled = false
 let backendStartupTimer: NodeJS.Timeout | null = null
+let _restartingBackend = false
 
 // Create promise that resolves when backend reports its port
 backendReady = new Promise((resolve, reject) => {
@@ -43,6 +44,28 @@ backendReady = new Promise((resolve, reject) => {
     reject(error)
   }
 })
+
+/**
+ * Reset backend-ready state so a fresh start/restart can use resolveBackendReady /
+ * rejectBackendReady again.  Also clears the restart flag when the promise settles.
+ */
+function _createRestartPromise(): void {
+  backendReadySettled = false
+  backendReady = new Promise<number>((resolve, reject) => {
+    resolveBackendReady = (port: number) => {
+      if (backendReadySettled) return
+      backendReadySettled = true
+      _restartingBackend = false
+      resolve(port)
+    }
+    rejectBackendReady = (error: Error) => {
+      if (backendReadySettled) return
+      backendReadySettled = true
+      _restartingBackend = false
+      reject(error)
+    }
+  })
+}
 
 function getBackendDir(): string {
   if (is.dev) {
@@ -192,6 +215,8 @@ function prepareBackendDataDir(): string {
 }
 
 async function startBackend(): Promise<void> {
+  // Clear any lingering startup timer from a previous start attempt
+  clearBackendStartupTimer()
   const backendDir = getBackendDir()
   const backendDataDir = prepareBackendDataDir()
 
@@ -275,11 +300,23 @@ async function startBackend(): Promise<void> {
   backendProcess.on('exit', (code) => {
     flog(`backend exited with code ${code}`)
     clearBackendStartupTimer()
-    if (!backendReadySettled) {
-      failBackendStartup(`后端在启动完成前退出，退出码：${code ?? 'unknown'}`)
-    }
-    console.log(`Backend exited with code ${code}`)
     backendProcess = null
+
+    if (!backendReadySettled) {
+      // Exited before becoming ready — surface the error and stop
+      failBackendStartup(`后端在启动完成前退出，退出码：${code ?? 'unknown'}`)
+      return
+    }
+
+    // Backend was already serving requests and crashed — auto-restart once
+    if (!_restartingBackend) {
+      flog('Backend crashed after startup — auto-restarting...')
+      console.warn('Backend crashed after startup — auto-restarting...')
+      _restartingBackend = true
+      backendPort = null
+      _createRestartPromise()
+      void startBackend()
+    }
   })
 }
 
@@ -385,8 +422,40 @@ app.whenReady().then(async () => {
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
 
-  // IPC: renderer can query backend URL (waits until backend is ready)
+  // IPC: renderer can query backend URL.
+  // Pings the backend on every call; if the backend has died it is automatically
+  // restarted before the URL is returned, so the renderer always gets a live URL.
   ipcMain.handle('get-backend-url', async () => {
+    // If a restart (or initial startup) is already in progress, wait for it.
+    if (_restartingBackend || !backendReadySettled) {
+      const port = await backendReady
+      return `http://127.0.0.1:${port}`
+    }
+
+    // Backend was previously ready — verify it is still alive.
+    const currentPort = backendPort
+    if (currentPort !== null) {
+      const alive = await pingBackend(currentPort)
+      if (alive) return `http://127.0.0.1:${currentPort}`
+    }
+
+    // After the async ping above another concurrent IPC call may have already
+    // kicked off a restart — if so, just wait for it.
+    if (_restartingBackend) {
+      const port = await backendReady
+      return `http://127.0.0.1:${port}`
+    }
+
+    // Backend is unresponsive — restart it.
+    // _restartingBackend is set SYNCHRONOUSLY here (no await between the check
+    // above and this assignment) so concurrent IPC calls see the flag immediately.
+    flog(`Backend on port ${currentPort ?? 'unknown'} is unresponsive — restarting...`)
+    console.warn(`Backend on port ${currentPort ?? 'unknown'} is unresponsive — restarting...`)
+    _restartingBackend = true
+    backendPort = null
+    _createRestartPromise()
+    void startBackend()
+
     const port = await backendReady
     return `http://127.0.0.1:${port}`
   })

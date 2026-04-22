@@ -34,6 +34,8 @@ class Setting(Base):
 DEFAULTS: dict[str, str] = {
     "language": "zh",              # "zh" | "en"
     "embed_max_concurrency": "4",  # max parallel embedding API calls during indexing
+    "embed_use_model_qps": "false",  # whether to derive embedding concurrency from embedding model qps
+    "kb_index_max_workers": "4",  # max document-level indexing workers for batch add/reindex
     "default_embed_model_id": "",  # empty string = no default; store as numeric string when set
     "pdf_parser": "pdfplumber",    # "pdfplumber" | "pymupdf" | "pypdf"
     "docx_parser": "python-docx",  # "python-docx" | "markitdown"
@@ -60,6 +62,18 @@ class SettingsOut(BaseModel):
         ge=1,
         le=32,
         description="Max parallel embedding API calls during file indexing (controls QPS)",
+        examples=[4],
+    )
+    embed_use_model_qps: bool = Field(
+        default=False,
+        description="Whether embedding concurrency should follow the embedding model's QPS (true = auto, false = manual embed_max_concurrency)",
+        examples=[False],
+    )
+    kb_index_max_workers: int = Field(
+        default=4,
+        ge=1,
+        le=16,
+        description="Max parallel document indexing workers for batch add/reindex (document-level concurrency)",
         examples=[4],
     )
     default_embed_model_id: int | None = Field(
@@ -129,6 +143,18 @@ class SettingsUpdate(BaseModel):
         ge=1,
         le=32,
         description="Max parallel embedding API calls (1–32)",
+        examples=[4],
+    )
+    embed_use_model_qps: bool | None = Field(
+        default=None,
+        description="Whether to auto-set embedding concurrency from embedding model QPS",
+        examples=[False],
+    )
+    kb_index_max_workers: int | None = Field(
+        default=None,
+        ge=1,
+        le=16,
+        description="Max parallel document indexing workers for batch jobs (1–16)",
         examples=[4],
     )
     rag_top_k: int | None = Field(

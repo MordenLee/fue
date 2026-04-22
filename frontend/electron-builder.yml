@@ -33,7 +33,7 @@ asarUnpack:
   - resources/**
 win:
   executableName: fue
-  icon: build/icon.ico
+  icon: icon.ico
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
@@ -41,8 +41,9 @@ nsis:
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
-  installerIcon: build/icon.ico
-  uninstallerIcon: build/icon.ico
+  installerIcon: icon.ico
+  uninstallerIcon: icon.ico
+  installerHeaderIcon: icon.ico
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

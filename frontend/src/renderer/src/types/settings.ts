@@ -1,6 +1,8 @@
 export interface SettingsOut {
   language: 'zh' | 'en'
   embed_max_concurrency: number
+  embed_use_model_qps: boolean
+  kb_index_max_workers: number
   rag_top_k: number
   default_embed_model_id: number | null
   pdf_parser: 'pdfplumber' | 'pymupdf' | 'pypdf'
@@ -15,6 +17,8 @@ export interface SettingsOut {
 export interface SettingsUpdate {
   language?: 'zh' | 'en'
   embed_max_concurrency?: number
+  embed_use_model_qps?: boolean
+  kb_index_max_workers?: number
   rag_top_k?: number
   default_embed_model_id?: number | null
   pdf_parser?: SettingsOut['pdf_parser']

@@ -143,9 +143,19 @@ def clean_document(
         return raw_text
 
     # context_length is stored in k-tokens; ~3 chars/token.
-    # Use 35 % for input to leave headroom for system prompt + output of similar size.
-    context_k = ai_model.context_length or 8
-    batch_chars = max(int(context_k * 1000 * 3 * 0.35), 3000)
+    # Guard against misconfigured giant context values to avoid oversized single calls.
+    raw_context_k = ai_model.context_length or 8
+    context_k = max(8, min(raw_context_k, 256))
+    # Keep per-request payload moderate for better provider stability/latency.
+    batch_chars = max(int(context_k * 1000 * 3 * 0.25), 8000)
+    batch_chars = min(batch_chars, 120000)
+
+    if raw_context_k != context_k:
+        logger.warning(
+            "Cleaner: context_length=%dk capped to %dk for batching",
+            raw_context_k,
+            context_k,
+        )
 
     if len(raw_text) <= batch_chars:
         return _clean_section(llm, raw_text, fallback=raw_text, model_id=model_id, qps=qps, keep_references=keep_references, keep_annotations=keep_annotations)
@@ -155,7 +165,8 @@ def clean_document(
         "Cleaner: %d batch(es) for document (%d chars/batch, context=%dk)",
         len(batches), batch_chars, context_k,
     )
-    with ThreadPoolExecutor(max_workers=len(batches)) as executor:
+    max_workers = min(len(batches), 4)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(
                 _clean_section, llm, batch,

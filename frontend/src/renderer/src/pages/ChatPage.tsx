@@ -206,7 +206,7 @@ export function ChatPage() {
     if (streaming.error) {
       toast.error(streaming.error)
     }
-  }, [streaming.error, toast])
+  }, [streaming.error, toast.error])
 
   const handleDeleteMessage = useCallback(async (msgId: number) => {
     try {

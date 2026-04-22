@@ -134,10 +134,12 @@ def _to_lc_messages(messages: list[ChatMessage]):
 
 
 def _build_llm(ai_model: AIModel):
-    """Wrap providers.chat.build_llm, converting ValueError to HTTPException."""
+    """Wrap providers.chat.build_llm, converting any init error to HTTPException."""
     try:
         return _build_llm_base(ai_model)
-    except ValueError as exc:
+    except HTTPException:
+        raise
+    except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 

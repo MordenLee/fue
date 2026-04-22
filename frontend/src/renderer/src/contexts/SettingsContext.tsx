@@ -18,6 +18,8 @@ interface SettingsContextType {
 const defaultSettings: SettingsOut = {
   language: 'zh',
   embed_max_concurrency: 4,
+  embed_use_model_qps: false,
+  kb_index_max_workers: 4,
   rag_top_k: 5,
   default_embed_model_id: null,
   pdf_parser: 'pdfplumber',

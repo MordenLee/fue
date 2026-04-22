@@ -17,9 +17,34 @@ if (window.api?.getBackendUrl) {
   _baseUrlReady = Promise.resolve(_baseUrl)
 }
 
+async function resolveBackendUrl(forceRefresh = false): Promise<string> {
+  if (window.api?.getBackendUrl && forceRefresh) {
+    _baseUrlReady = window.api.getBackendUrl().then((url) => {
+      _baseUrl = url
+      return url
+    })
+  }
+  return _baseUrlReady
+}
+
+async function fetchWithBackendRetry(input: string, init?: RequestInit): Promise<Response> {
+  await resolveBackendUrl()
+
+  try {
+    return await fetch(`${getBaseUrl()}${input}`, init)
+  } catch (error) {
+    if (!window.api?.getBackendUrl || !(error instanceof TypeError)) {
+      throw error
+    }
+
+    await resolveBackendUrl(true)
+    return fetch(`${getBaseUrl()}${input}`, init)
+  }
+}
+
 /** Wait for the backend URL to be resolved before making API calls */
 export function waitForBackend(): Promise<string> {
-  return _baseUrlReady
+  return resolveBackendUrl()
 }
 
 function getBaseUrl(): string {
@@ -37,12 +62,11 @@ export class ApiError extends Error {
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  await _baseUrlReady
   const headers: Record<string, string> = { ...init?.headers as Record<string, string> }
   if (init?.body && !(init.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json'
   }
-  const res = await fetch(`${getBaseUrl()}${path}`, { ...init, headers })
+  const res = await fetchWithBackendRetry(path, { ...init, headers })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new ApiError(res.status, body.detail ?? res.statusText)
@@ -59,8 +83,7 @@ export function streamRequest(
   const controller = new AbortController()
 
   ;(async () => {
-    await _baseUrlReady
-    const res = await fetch(`${getBaseUrl()}${path}`, {
+    const res = await fetchWithBackendRetry(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

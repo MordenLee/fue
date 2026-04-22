@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useState } from 'react'
+import { createContext, useContext, useCallback, useMemo, useState } from 'react'
 import { ToastContainer, type ToastData } from '../components/ui/Toast'
 
 interface ToastContextType {
@@ -25,13 +25,29 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => [...prev, { ...data, id }])
   }, [])
 
-  const ctx: ToastContextType = {
+  const success = useCallback((message: string) => {
+    addToast({ type: 'success', message })
+  }, [addToast])
+
+  const error = useCallback((message: string) => {
+    addToast({ type: 'error', message })
+  }, [addToast])
+
+  const warning = useCallback((message: string) => {
+    addToast({ type: 'warning', message })
+  }, [addToast])
+
+  const info = useCallback((message: string) => {
+    addToast({ type: 'info', message })
+  }, [addToast])
+
+  const ctx: ToastContextType = useMemo(() => ({
     toast: addToast,
-    success: (message) => addToast({ type: 'success', message }),
-    error: (message) => addToast({ type: 'error', message }),
-    warning: (message) => addToast({ type: 'warning', message }),
-    info: (message) => addToast({ type: 'info', message })
-  }
+    success,
+    error,
+    warning,
+    info
+  }), [addToast, success, error, warning, info])
 
   return (
     <ToastContext.Provider value={ctx}>

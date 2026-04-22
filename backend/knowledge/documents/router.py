@@ -30,11 +30,22 @@ from knowledge.documents.models import (
 )
 from knowledge.models import KnowledgeBase
 from knowledge.parser import SUPPORTED_EXTENSIONS
+from settings.models import DEFAULTS, Setting
 
 router = APIRouter(prefix="/api/knowledge-bases", tags=["documents", "citations"])
 
-# 后台并行索引最大线程数
-_MAX_INDEX_WORKERS = 4
+def _get_index_max_workers_from_settings() -> int:
+    """Read batch document-level indexing workers from settings (1-16)."""
+    db = SessionLocal()
+    try:
+        row = db.get(Setting, "kb_index_max_workers")
+        raw = row.value if row and row.value else DEFAULTS.get("kb_index_max_workers", "4")
+        value = int(raw)
+    except (ValueError, TypeError):
+        value = 4
+    finally:
+        db.close()
+    return max(1, min(value, 16))
 
 
 class AddDocumentsRequest(BaseModel):
@@ -72,7 +83,7 @@ def _run_index_in_background(document_file_id: int) -> None:
 
 def _index_many_in_background(doc_ids: list[int]) -> None:
     """并行索引多个文档：每个文档在独立线程中运行，拥有各自的 DB session。"""
-    workers = min(len(doc_ids), _MAX_INDEX_WORKERS)
+    workers = min(len(doc_ids), _get_index_max_workers_from_settings())
     with ThreadPoolExecutor(max_workers=workers) as pool:
         pool.map(_run_index_in_background, doc_ids)
 

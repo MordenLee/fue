@@ -53,13 +53,28 @@ logger = logging.getLogger(__name__)
 __all__ = ["SUPPORTED_EXTENSIONS", "index_document"]
 
 
-def _get_embed_max_concurrency(db: Session) -> int:
-    """Read embed_max_concurrency from settings, fall back to default."""
-    row = db.get(Setting, "embed_max_concurrency")
+def _get_embed_max_concurrency(db: Session, embed_model: AIModel | None = None) -> int:
+    """Resolve embedding concurrency from settings and model qps.
+
+    Priority:
+    1) If embed_use_model_qps=true and embed_model.qps is set (>0), use model qps.
+    2) Otherwise use manual embed_max_concurrency.
+    """
+    manual_row = db.get(Setting, "embed_max_concurrency")
+    auto_row = db.get(Setting, "embed_use_model_qps")
+
     try:
-        return int(row.value) if row else int(DEFAULTS["embed_max_concurrency"])
+        manual_value = int(manual_row.value) if manual_row else int(DEFAULTS["embed_max_concurrency"])
     except (ValueError, TypeError):
-        return 4
+        manual_value = 4
+
+    use_model_qps = (
+        (auto_row.value if auto_row else DEFAULTS.get("embed_use_model_qps", "false")).lower() == "true"
+    )
+
+    if use_model_qps and embed_model and (embed_model.qps or 0) > 0:
+        return max(1, min(int(embed_model.qps), 32))
+    return max(1, min(manual_value, 32))
 
 
 def _get_parser_config(db: Session) -> tuple[str, str]:
@@ -249,7 +264,7 @@ def index_document(db: Session, document_file_id: int) -> None:
         # 6. Compute embeddings in parallel
         doc.status = "embedding"
         db.commit()
-        max_concurrency = _get_embed_max_concurrency(db)
+        max_concurrency = _get_embed_max_concurrency(db, embed_model)
         vectors = _parallel_embed(embedder, chunks, max_concurrency)
 
         # Cancel-check 3: final guard — prevents orphaned chunks in ChromaDB
