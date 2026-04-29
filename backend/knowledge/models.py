@@ -128,6 +128,10 @@ class SearchResult(BaseModel):
     chunk_index: int
     content: str
     score: float
+    citation_title: str | None = None
+    citation_authors: list[str] | None = None
+    citation_year: int | None = None
+    citation_id: int | None = None
 
 
 # ---------------------------------------------------------------------------

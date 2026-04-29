@@ -34,5 +34,20 @@ export interface StreamRAGOptions {
   citation_style?: string
   top_k?: number
   rerank?: boolean
-  existing_references?: Array<{ ref_num: number; document_file_id: number; original_filename: string; formatted_citation: string }>
+  existing_references?: Array<{
+    ref_num: number
+    document_file_id: number
+    original_filename: string
+    formatted_citation: string
+    chunk_index?: number
+    chunk_content?: string
+    knowledge_base_id?: number
+    score?: number
+    chunks?: Array<{
+      chunk_index: number
+      chunk_content: string
+      knowledge_base_id?: number
+      score?: number
+    }>
+  }>
 }

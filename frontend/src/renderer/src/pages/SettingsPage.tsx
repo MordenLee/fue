@@ -6,6 +6,7 @@ import { Select } from '../components/ui/Select'
 import { Switch } from '../components/ui/Switch'
 import { NumberInput } from '../components/ui/NumberInput'
 import { ModelSelector } from '../components/shared/ModelSelector'
+import { CitationStyleSelect } from '../components/shared/CitationStyleSelect'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { useSettings } from '../contexts/SettingsContext'
 import { useToast } from '../contexts/ToastContext'
@@ -13,11 +14,12 @@ import { settingsService } from '../services/settings'
 import type { SettingsUpdate } from '../types/settings'
 import { useI18n } from '../i18n'
 
-type SectionKey = 'general' | 'rag' | 'parsing' | 'models'
+type SectionKey = 'general' | 'chat' | 'rag' | 'parsing' | 'models'
 
 const sections: { key: SectionKey; icon: React.ElementType; labelKey: string }[] = [
   { key: 'general', icon: Languages, labelKey: 'settings_page.section_general' },
-  { key: 'rag', icon: Database, labelKey: 'settings_page.section_rag' },
+  { key: 'chat', icon: Bot, labelKey: 'settings_page.section_chat' },
+  { key: 'rag', icon: Database, labelKey: 'settings_page.section_search' },
   { key: 'parsing', icon: FileText, labelKey: 'settings_page.section_parsing' },
   { key: 'models', icon: Bot, labelKey: 'settings_page.section_models' }
 ]
@@ -115,11 +117,64 @@ export function SettingsPage() {
                     ]}
                   />
                 </FormField>
+              </div>
+            </section>
+          )}
 
+          {activeSection === 'chat' && (
+            <section>
+              <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-6">{t('settings_page.section_chat')}</h2>
+              <div className="space-y-5">
                 <FormField label={t('settings_page.stream_output')} description={t('settings_page.stream_output_desc')}>
                   <Switch
                     checked={streamOutputEnabled}
                     onCheckedChange={setStreamOutputEnabled}
+                  />
+                </FormField>
+
+                <FormField label={t('settings_page.chat_citation_mode')} description={t('settings_page.chat_citation_mode_desc')}>
+                  <Select
+                    value={current.chat_citation_mode ?? 'document'}
+                    onValueChange={(v) => handleChange({ chat_citation_mode: v as 'document' | 'chunk' })}
+                    options={[
+                      { label: t('settings_page.chat_citation_mode_document'), value: 'document' },
+                      { label: t('settings_page.chat_citation_mode_chunk'), value: 'chunk' }
+                    ]}
+                  />
+                </FormField>
+
+                <FormField label={t('settings_page.chat_citation_style')} description={t('settings_page.chat_citation_style_desc')}>
+                  <CitationStyleSelect
+                    value={current.chat_citation_style ?? 'apa'}
+                    onChange={(v) => handleChange({ chat_citation_style: v as SettingsUpdate['chat_citation_style'] })}
+                  />
+                </FormField>
+
+                <FormField label={t('settings_page.chat_history_turns')} description={t('settings_page.chat_history_turns_desc')}>
+                  <NumberInput
+                    className="w-28"
+                    value={current.chat_history_turns ?? 5}
+                    onChange={(v) => handleChange({ chat_history_turns: v })}
+                    min={0}
+                    max={50}
+                  />
+                </FormField>
+
+                <FormField label={t('settings_page.chat_max_tool_rounds')} description={t('settings_page.chat_max_tool_rounds_desc')}>
+                  <NumberInput
+                    className="w-28"
+                    value={current.chat_max_tool_rounds ?? 5}
+                    onChange={(v) => handleChange({ chat_max_tool_rounds: v })}
+                    min={1}
+                    max={20}
+                  />
+                </FormField>
+
+                <FormField label={t('settings_page.chat_compress_model')} description={t('settings_page.chat_compress_model_desc')}>
+                  <ModelSelector
+                    value={current.chat_compress_model_id ?? null}
+                    onChange={(v) => handleChange({ chat_compress_model_id: v })}
+                    modelType="chat"
                   />
                 </FormField>
               </div>
@@ -128,10 +183,19 @@ export function SettingsPage() {
 
           {activeSection === 'rag' && (
             <section>
-              <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-6">{t('settings_page.section_rag')}</h2>
+              <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-6">{t('settings_page.section_search')}</h2>
               <div className="space-y-5">
-                <FormField label={t('settings_page.rag_top_k')} description={t('settings_page.rag_top_k_desc')}>
+                <FormField label={t('settings_page.single_search_top_k')} description={t('settings_page.single_search_top_k_desc')}>
                   <NumberInput className="w-28" value={current.rag_top_k ?? 5} onChange={(v) => handleChange({ rag_top_k: v })} min={1} max={50} />
+                </FormField>
+                <FormField label={t('settings_page.hybrid_keyword_floor_top_k')} description={t('settings_page.hybrid_keyword_floor_top_k_desc')}>
+                  <NumberInput
+                    className="w-28"
+                    value={current.hybrid_keyword_floor_top_k ?? 10}
+                    onChange={(v) => handleChange({ hybrid_keyword_floor_top_k: v })}
+                    min={1}
+                    max={100}
+                  />
                 </FormField>
               </div>
             </section>

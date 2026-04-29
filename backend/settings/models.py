@@ -40,10 +40,17 @@ DEFAULTS: dict[str, str] = {
     "pdf_parser": "pdfplumber",    # "pdfplumber" | "pymupdf" | "pypdf"
     "docx_parser": "python-docx",  # "python-docx" | "markitdown"
     "rag_top_k": "5",              # default number of chunks retrieved per RAG query
+    "hybrid_keyword_floor_top_k": "10",  # hybrid mode: guaranteed keyword chunk budget
     # --- Auxiliary models (empty = disabled) ---
     "doc_clean_model_id": "",      # chat model ID for document text cleaning
     "chat_summary_model_id": "",   # chat model ID for conversation summarization
     "info_extract_model_id": "",   # chat model ID for citation + abstract extraction
+    "chat_citation_mode": "document",  # citation granularity in chat: document | chunk
+    "chat_citation_style": "apa",  # default citation style for chat: apa | mla | chicago | gb_t7714
+    # --- Chat context control ---
+    "chat_history_turns": "5",     # number of recent turns to pass to the LLM (0 = unlimited)
+    "chat_max_tool_rounds": "5",   # max tool-calling rounds per RAG turn
+    "chat_compress_model_id": "",  # chat model ID for compressing old history (empty = disabled)
     # --- Cleaner behaviour ---
     "doc_clean_keep_references": "false",  # whether to keep reference/bibliography sections during cleaning
     "doc_clean_keep_annotations": "false",  # whether to keep annotation/footnote/endnote sections during cleaning
@@ -101,6 +108,13 @@ class SettingsOut(BaseModel):
         description="Default number of chunks retrieved per RAG query (1–100)",
         examples=[5],
     )
+    hybrid_keyword_floor_top_k: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Hybrid retrieval: minimum keyword chunks to keep (1–100)",
+        examples=[10],
+    )
     doc_clean_model_id: int | None = Field(
         default=None,
         description="Chat model ID used to clean parsed document text (null = disabled)",
@@ -125,6 +139,38 @@ class SettingsOut(BaseModel):
         default=False,
         description="When cleaning documents, whether to preserve annotation/footnote/endnote sections (default: False = strip them)",
         examples=[False],
+    )
+    chat_citation_mode: str = Field(
+        default="document",
+        pattern=r"^(document|chunk)$",
+        description="Citation granularity in chat: document (group by paper) | chunk (each chunk cited separately)",
+        examples=["document"],
+    )
+    chat_citation_style: str = Field(
+        default="apa",
+        pattern=r"^(apa|mla|chicago|gb_t7714)$",
+        description="Default citation style used in chat responses",
+        examples=["apa"],
+    )
+    # --- Chat context control ---
+    chat_history_turns: int = Field(
+        default=5,
+        ge=0,
+        le=50,
+        description="Number of recent conversation turns passed to the LLM (0 = unlimited)",
+        examples=[5],
+    )
+    chat_max_tool_rounds: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Max tool-calling rounds per RAG turn (1–20)",
+        examples=[5],
+    )
+    chat_compress_model_id: int | None = Field(
+        default=None,
+        description="Chat model ID used to compress old history when context nears 80% capacity (null = disabled)",
+        examples=[2],
     )
 
     model_config = {"from_attributes": True}
@@ -163,6 +209,13 @@ class SettingsUpdate(BaseModel):
         le=100,
         description="Default number of chunks retrieved per RAG query (1–100)",
         examples=[5],
+    )
+    hybrid_keyword_floor_top_k: int | None = Field(
+        default=None,
+        ge=1,
+        le=100,
+        description="Hybrid retrieval: minimum keyword chunks to keep (1–100)",
+        examples=[10],
     )
     default_embed_model_id: int | None = Field(
         default=None,
@@ -206,4 +259,36 @@ class SettingsUpdate(BaseModel):
         default=None,
         description="Whether to preserve annotation/footnote/endnote sections when cleaning documents (false = strip them)",
         examples=[False],
+    )
+    chat_citation_mode: str | None = Field(
+        default=None,
+        pattern=r"^(document|chunk)$",
+        description="Citation granularity in chat: document | chunk",
+        examples=["document"],
+    )
+    chat_citation_style: str | None = Field(
+        default=None,
+        pattern=r"^(apa|mla|chicago|gb_t7714)$",
+        description="Default citation style used in chat responses",
+        examples=["apa"],
+    )
+    # --- Chat context control ---
+    chat_history_turns: int | None = Field(
+        default=None,
+        ge=0,
+        le=50,
+        description="Number of recent conversation turns passed to the LLM (0 = unlimited)",
+        examples=[5],
+    )
+    chat_max_tool_rounds: int | None = Field(
+        default=None,
+        ge=1,
+        le=20,
+        description="Max tool-calling rounds per RAG turn (1–20)",
+        examples=[5],
+    )
+    chat_compress_model_id: int | None = Field(
+        default=None,
+        description="Chat model ID for compressing old history (pass null to disable)",
+        examples=[2],
     )

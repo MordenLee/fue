@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PanelRightClose, PanelRightOpen, Copy, Check, FileText, ChevronDown, ChevronUp } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, Copy, Check, FileText } from 'lucide-react'
 import { IconButton } from '../ui/IconButton'
 import { ScrollArea } from '../ui/ScrollArea'
 import { Select } from '../ui/Select'
@@ -7,6 +7,8 @@ import { ChunkCard } from '../shared/ChunkCard'
 import { useI18n } from '../../i18n'
 
 interface RetrievalChunk {
+  chunk_key: string
+  citation_num: number
   document_id: number
   original_filename: string
   chunk_index: number
@@ -20,19 +22,17 @@ interface RetrievalPanelProps {
   chunks: RetrievalChunk[]
   collapsed: boolean
   onToggle: () => void
-  highlightedChunk?: number | null
+  highlightedChunkKey?: string | null
   onChunkClick?: (chunkIndex: number) => void
 }
 
-function DocumentGroupCard({ filename, fileChunks, allChunks, highlightedChunk, onChunkClick }: {
+function DocumentGroupCard({ filename, fileChunks, highlightedChunkKey, onChunkClick }: {
   filename: string
   fileChunks: RetrievalChunk[]
-  allChunks: RetrievalChunk[]
-  highlightedChunk?: number | null
+  highlightedChunkKey?: string | null
   onChunkClick?: (chunkIndex: number) => void
 }) {
   const { t } = useI18n()
-  const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
   const bestChunk = fileChunks[0]
   const citation = bestChunk.formatted_citation
@@ -64,29 +64,23 @@ function DocumentGroupCard({ filename, fileChunks, allChunks, highlightedChunk, 
             >
               {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
             </button>
-            {fileChunks.length > 1 && (
-              <button
-                onClick={() => setExpanded(!expanded)}
-                className="flex items-center gap-0.5 text-[10px] text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 px-1 py-0.5 rounded hover:bg-neutral-200 dark:hover:bg-white/10 transition"
-              >
-                {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                {fileChunks.length}
-              </button>
-            )}
+            <span className="flex items-center gap-0.5 text-[10px] text-neutral-500 px-1 py-0.5">
+              {fileChunks.length}
+            </span>
           </div>
         </div>
       </div>
       <div className="p-2 flex flex-col gap-2">
-        {(expanded ? fileChunks : [bestChunk]).map((chunk, j) => (
+        {fileChunks.map((chunk, j) => (
           <ChunkCard
             key={`${chunk.document_id}-${chunk.chunk_index}-${j}`}
             filename={filename}
             chunkIndex={chunk.chunk_index}
             score={chunk.score}
             content={chunk.content?.trim() ?? ''}
-            highlighted={highlightedChunk === chunk.chunk_index}
+            highlighted={highlightedChunkKey === chunk.chunk_key}
             onClick={() => onChunkClick?.(chunk.chunk_index)}
-            indexBadge={allChunks.indexOf(chunk) + 1}
+            indexBadge={chunk.citation_num}
           />
         ))}
       </div>
@@ -94,7 +88,7 @@ function DocumentGroupCard({ filename, fileChunks, allChunks, highlightedChunk, 
   )
 }
 
-export function RetrievalPanel({ chunks, collapsed, onToggle, highlightedChunk, onChunkClick }: RetrievalPanelProps) {
+export function RetrievalPanel({ chunks, collapsed, onToggle, highlightedChunkKey, onChunkClick }: RetrievalPanelProps) {
   const { t } = useI18n()
   const [viewMode, setViewMode] = useState<'chunk' | 'document'>('chunk')
 
@@ -139,26 +133,27 @@ export function RetrievalPanel({ chunks, collapsed, onToggle, highlightedChunk, 
                 chunkIndex={chunk.chunk_index}
                 score={chunk.score}
                 content={chunk.content?.trim() ?? ''}
-                highlighted={highlightedChunk === chunk.chunk_index}
+                highlighted={highlightedChunkKey === chunk.chunk_key}
                 onClick={() => onChunkClick?.(chunk.chunk_index)}
-                indexBadge={i + 1}
+                indexBadge={chunk.citation_num}
               />
             ))
           ) : (
             // Document View — group by filename, show citation with copy
-            Object.entries(
-              chunks.reduce<Record<string, RetrievalChunk[]>>((acc, r) => {
-                if (!acc[r.original_filename]) acc[r.original_filename] = []
-                acc[r.original_filename].push(r)
+            Object.values(
+              chunks.reduce<Record<number, { filename: string; chunks: RetrievalChunk[] }>>((acc, r) => {
+                if (!acc[r.document_id]) {
+                  acc[r.document_id] = { filename: r.original_filename, chunks: [] }
+                }
+                acc[r.document_id].chunks.push(r)
                 return acc
               }, {})
-            ).sort((a, b) => b[1][0].score - a[1][0].score).map(([filename, fileChunks], i) => (
+            ).sort((a, b) => b.chunks[0].score - a.chunks[0].score).map((group, i) => (
               <DocumentGroupCard
-                key={`${filename}-${i}`}
-                filename={filename}
-                fileChunks={fileChunks}
-                allChunks={chunks}
-                highlightedChunk={highlightedChunk}
+                key={`${group.filename}-${i}`}
+                filename={group.filename}
+                fileChunks={group.chunks}
+                highlightedChunkKey={highlightedChunkKey}
                 onChunkClick={onChunkClick}
               />
             ))

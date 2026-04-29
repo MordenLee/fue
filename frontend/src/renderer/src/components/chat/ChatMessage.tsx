@@ -1,8 +1,14 @@
-import { User, Bot, Trash2, Copy, Check, Pencil, RefreshCw, X } from 'lucide-react'
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { User, Bot, Trash2, Copy, Check, Pencil, RefreshCw, X, Plus } from 'lucide-react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { MarkdownLatexRenderer } from '../shared/MarkdownLatexRenderer'
 import { CitationRenderer } from './CitationRenderer'
+import { InlineModelSelector } from './ChatInput'
+import { KBSelectionModal } from '../search/KBSelectionModal'
 import type { MessageOut } from '../../types/conversation'
+import type { RefDisplayMap } from '../../utils/citationRemap'
+import type { KnowledgeBaseOut } from '../../types/knowledge'
+import type { AIModelOut } from '../../types/provider'
+import { applyRefRemapping, remapRefNums } from '../../utils/citationRemap'
 import { useI18n } from '../../i18n'
 
 interface ChatMessageProps {
@@ -10,17 +16,32 @@ interface ChatMessageProps {
   isStreaming?: boolean
   onCiteClick?: (refNum: number) => void
   onDelete?: (msgId: number) => void
-  onEdit?: (msgId: number, content: string) => void
+  onEdit?: (msgId: number, content: string, modelId: number | null, kbIds: number[]) => void
   onRegenerate?: (msgId: number) => void
-  allKnownRefs?: Set<number>
+  /** Global remapping from MessageList — maps this message's original ref_nums to display nums */
+  refDisplayMap?: RefDisplayMap
+  /** Model name + provider to display right-aligned at the bottom of the message */
+  modelInfo?: { name: string; provider: string }
+  /** Model list for the edit mode model selector (only needed for user messages) */
+  models?: AIModelOut[]
+  /** Knowledge base list for the edit mode KB selector (only needed for user messages) */
+  kbs?: KnowledgeBaseOut[]
+  /** Initial model id shown in the edit mode selector */
+  editInitialModelId?: number | null
+  /** Initial kb ids shown in the edit mode selector */
+  editInitialKbIds?: number[]
 }
 
-export function ChatMessage({ message, isStreaming, onCiteClick, onDelete, onEdit, onRegenerate, allKnownRefs }: ChatMessageProps) {
+export function ChatMessage({ message, isStreaming, onCiteClick, onDelete, onEdit, onRegenerate, refDisplayMap, modelInfo, models, kbs, editInitialModelId, editInitialKbIds }: ChatMessageProps) {
   const isUser = message.role === 'user'
+  const isFirstMessage = message.position === 0
   const { t } = useI18n()
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState('')
+  const [editModelId, setEditModelId] = useState<number | null>(null)
+  const [editKbIds, setEditKbIds] = useState<number[]>([])
+  const [editKbModalOpen, setEditKbModalOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Pre-process markdown: fix common LLM formatting issues
@@ -30,24 +51,46 @@ export function ChatMessage({ message, isStreaming, onCiteClick, onDelete, onEdi
     text = text.replace(/([^\n])(#{1,6}\s)/g, '$1\n\n$2')
     // Fix consecutive bold markers (e.g. ****) that break rendering
     text = text.replace(/\*{4,}/g, '**\n\n**')
-    // Normalize LaTeX delimiters: many LLMs output \(...\) and \[...\]
-    // but remark-math only recognizes $...$ and $$...$$
-    // Display math: \[...\] → $$...$$
+    // Normalize LaTeX delimiters
     text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner) => `$$\n${inner.trim()}\n$$`)
-    // Inline math: \(...\) → $...$  (use non-greedy, no newlines allowed inside)
     text = text.replace(/\\\(([^)]*?)\\\)/g, (_m, inner) => `$${inner}$`)
     return text
   }, [message.content])
 
-  // Build set of known citation ref numbers — used by the remark plugin in MarkdownLatexRenderer
-  // Include all known refs across all conversation turns so cross-turn references render as circles
+  // Apply the display remapping to message text ([orig] → [display])
+  const remappedContent = useMemo(() => {
+    if (!refDisplayMap || refDisplayMap.localToDisplay.size === 0) return processedContent
+    return applyRefRemapping(processedContent, refDisplayMap.localToDisplay)
+  }, [processedContent, refDisplayMap])
+
+  // Remap references array to use display numbers
+  const displayRefs = useMemo(() => {
+    if (!message.references || message.references.length === 0) return []
+    const sorted = [...message.references].sort((a, b) => a.ref_num - b.ref_num)
+    if (!refDisplayMap || refDisplayMap.localToDisplay.size === 0) return sorted
+    return remapRefNums(sorted, refDisplayMap.localToDisplay)
+  }, [message.references, refDisplayMap])
+
+  // Known display ref numbers — used by MarkdownLatexRenderer to style citation markers
   const knownCiteRefs = useMemo(() => {
     if (isUser) return undefined
-    // Use the global set if provided (covers all turns), or fall back to message-local refs
-    if (allKnownRefs && allKnownRefs.size > 0) return allKnownRefs
-    if (!message.references || message.references.length === 0) return undefined
-    return new Set(message.references.map(r => r.ref_num))
-  }, [isUser, message.references, allKnownRefs])
+    if (refDisplayMap && refDisplayMap.localToDisplay.size > 0) {
+      return new Set<number>(refDisplayMap.localToDisplay.values())
+    }
+    if (displayRefs.length === 0) return undefined
+    return new Set(displayRefs.map(r => r.ref_num))
+  }, [isUser, refDisplayMap, displayRefs])
+
+  // Translate display number back to original ref_num before calling parent handler
+  const wrappedOnCiteClick = useCallback((displayNum: number) => {
+    if (!onCiteClick) return
+    if (refDisplayMap?.displayToLocals.has(displayNum)) {
+      const origNums = refDisplayMap.displayToLocals.get(displayNum)!
+      onCiteClick(origNums[0])
+    } else {
+      onCiteClick(displayNum)
+    }
+  }, [onCiteClick, refDisplayMap])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content)
@@ -57,13 +100,15 @@ export function ChatMessage({ message, isStreaming, onCiteClick, onDelete, onEdi
 
   const handleStartEdit = () => {
     setEditContent(message.content)
+    setEditModelId(editInitialModelId ?? null)
+    setEditKbIds(editInitialKbIds ?? [])
     setEditing(true)
     setTimeout(() => textareaRef.current?.focus(), 0)
   }
 
   const handleConfirmEdit = () => {
     if (editContent.trim() && onEdit) {
-      onEdit(message.id, editContent.trim())
+      onEdit(message.id, editContent.trim(), editModelId, editKbIds)
     }
     setEditing(false)
   }
@@ -81,7 +126,8 @@ export function ChatMessage({ message, isStreaming, onCiteClick, onDelete, onEdi
   }, [editing, editContent])
 
   return (
-    <div className={`group flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
+    <>
+      <div className={`group flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
       <div
         className={`flex items-center justify-center w-8 h-8 rounded-full shrink-0
           ${isUser ? 'bg-blue-600' : 'bg-gray-200 dark:bg-neutral-700'}`}
@@ -97,6 +143,40 @@ export function ChatMessage({ message, isStreaming, onCiteClick, onDelete, onEdi
         >
           {isUser && editing ? (
             <div className="flex flex-col gap-2">
+              {kbs && (
+                <div className="flex items-center gap-1.5 flex-wrap border-b border-blue-400/20 pb-2 mb-0.5">
+                  {editKbIds.map(id => {
+                    const kb = kbs.find(k => k.id === id)
+                    if (!kb) return null
+                    return (
+                      <div key={id} className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 rounded border border-blue-200 dark:border-blue-500/20 text-xs">
+                        <span className="truncate max-w-[100px]">{kb.name}</span>
+                        <button
+                          onClick={() => setEditKbIds(editKbIds.filter(x => x !== id))}
+                          className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-200 rounded-full"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )
+                  })}
+                  <button
+                    onClick={() => setEditKbModalOpen(true)}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-neutral-500 border border-dashed border-neutral-300 dark:border-neutral-600 hover:text-blue-600 hover:border-blue-400 transition"
+                  >
+                    <Plus className="w-3 h-3" />
+                    {t('chat.bind_kb')}
+                  </button>
+                  {editKbIds.length > 0 && (
+                    <button
+                      onClick={() => setEditKbIds([])}
+                      className="text-xs text-neutral-400 hover:text-red-500 transition-colors"
+                    >
+                      {t('common.clear')}
+                    </button>
+                  )}
+                </div>
+              )}
               <textarea
                 ref={textareaRef}
                 value={editContent}
@@ -107,7 +187,18 @@ export function ChatMessage({ message, isStreaming, onCiteClick, onDelete, onEdi
                 }}
                 className="w-full text-sm bg-white/50 dark:bg-black/20 border border-blue-400/50 rounded p-2 resize-none focus:outline-none focus:border-blue-500 min-h-[60px]"
               />
-              <div className="flex gap-2 justify-end">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {models && models.length > 0 && (
+                    <InlineModelSelector
+                      value={editModelId}
+                      onChange={setEditModelId}
+                      models={models}
+                      direction={isFirstMessage ? 'down' : 'up'}
+                    />
+                  )}
+                </div>
+                <div className="flex gap-2 justify-end">
                 <button
                   onClick={handleCancelEdit}
                   className="flex items-center gap-1 px-2.5 py-1 text-xs rounded bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 transition"
@@ -121,15 +212,28 @@ export function ChatMessage({ message, isStreaming, onCiteClick, onDelete, onEdi
                 >
                   {t('chat.send_edit')}
                 </button>
+                </div>
               </div>
             </div>
           ) : isUser ? (
             <p className="text-sm whitespace-pre-wrap message-selectable">{message.content}</p>
           ) : (
             <>
-              <MarkdownLatexRenderer content={processedContent} isStreaming={isStreaming} onCiteClick={onCiteClick} knownCiteRefs={knownCiteRefs} />
-              {message.references && message.references.length > 0 && (
-                <CitationRenderer references={message.references} onCiteClick={onCiteClick} />
+              <MarkdownLatexRenderer
+                content={remappedContent}
+                isStreaming={isStreaming}
+                onCiteClick={wrappedOnCiteClick}
+                knownCiteRefs={knownCiteRefs}
+              />
+              {!isStreaming && modelInfo && (
+                <div className="flex justify-end mt-2 mb-0.5">
+                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500 select-none">
+                    {modelInfo.name} · {modelInfo.provider}
+                  </span>
+                </div>
+              )}
+              {displayRefs.length > 0 && (
+                <CitationRenderer references={displayRefs} onCiteClick={wrappedOnCiteClick} />
               )}
             </>
           )}
@@ -177,5 +281,16 @@ export function ChatMessage({ message, isStreaming, onCiteClick, onDelete, onEdi
         )}
       </div>
     </div>
+    {kbs && (
+      <KBSelectionModal
+        open={editKbModalOpen}
+        onOpenChange={setEditKbModalOpen}
+        kbs={kbs}
+        selectedIds={editKbIds}
+        onChange={setEditKbIds}
+      />
+    )}
+    </>
   )
 }
+

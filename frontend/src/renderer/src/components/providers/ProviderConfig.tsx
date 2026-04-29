@@ -41,29 +41,55 @@ export function ProviderConfig({ provider, models, onUpdate, onToggle, onDelete 
   const [saving, setSaving] = useState(false)
   const [testDialogOpen, setTestDialogOpen] = useState(false)
 
+  const normalizedCurrentKey = provider.api_key ?? ''
+  const normalizedFormKey = apiKey.trim()
+  const hasUnsavedChanges =
+    normalizedFormKey !== normalizedCurrentKey ||
+    (apiBase.trim() || '') !== (provider.api_base_url ?? '') ||
+    interfaceType !== provider.interface_type ||
+    (description.trim() || '') !== (provider.description ?? '')
+
   useEffect(() => {
     setApiKey(provider.api_key ?? '')
     setApiBase(provider.api_base_url ?? '')
     setInterfaceType(provider.interface_type)
     setDescription(provider.description ?? '')
     setShowKey(false)
-  }, [provider.id])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider.id, provider.api_key, provider.api_base_url, provider.interface_type, provider.description])
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     setSaving(true)
     try {
-      await onUpdate(provider.id, {
-        api_key: apiKey.trim() || null,
+      // Only include api_key in the update payload if the user actually changed it.
+      // This prevents accidentally clearing a saved key when saving other fields.
+      const updateData: import('../../types/provider').ProviderUpdate = {
         api_base_url: apiBase.trim() || null,
         interface_type: interfaceType,
-        description: description.trim() || null
-      })
+        description: description.trim() || null,
+      }
+      const normalizedCurrent = provider.api_key ?? ''
+      const normalizedNew = apiKey.trim()
+      if (normalizedNew !== normalizedCurrent) {
+        updateData.api_key = normalizedNew || null
+      }
+      await onUpdate(provider.id, updateData)
       toast.success(t('providers.config_saved'))
+      return true
     } catch {
       toast.error(t('common.save_failed'))
+      return false
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleOpenTestDialog = async () => {
+    if (hasUnsavedChanges) {
+      const ok = await handleSave()
+      if (!ok) return
+    }
+    setTestDialogOpen(true)
   }
 
   return (
@@ -120,11 +146,14 @@ export function ProviderConfig({ provider, models, onUpdate, onToggle, onDelete 
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('common.optional_description')} rows={2} />
         </FormField>
         <div className="flex items-center justify-end gap-2 pt-1">
-          <Button variant="secondary" size="sm" onClick={() => setTestDialogOpen(true)}>
+          {hasUnsavedChanges && (
+            <span className="text-xs text-amber-600 dark:text-amber-400">{t('common.unsaved_changes')}</span>
+          )}
+          <Button variant="secondary" size="sm" onClick={() => void handleOpenTestDialog()}>
             <TestTube2 className="h-3.5 w-3.5 mr-1" />
             {t('providers.test_connectivity')}
           </Button>
-          <Button size="sm" onClick={handleSave} loading={saving}>
+          <Button size="sm" onClick={() => void handleSave()} loading={saving}>
             <Save className="h-3.5 w-3.5 mr-1" />
             {t('common.save')}
           </Button>

@@ -1,5 +1,6 @@
 """API routes for Provider and AIModel CRUD."""
 
+import logging
 import time
 from typing import Optional
 
@@ -22,6 +23,7 @@ from providers.models import (
 )
 
 router = APIRouter(prefix="/api", tags=["providers"])
+logger = logging.getLogger(__name__)
 
 
 # ============================= Providers =============================
@@ -68,7 +70,32 @@ def update_provider(
     record = db.get(Provider, provider_id)
     if not record:
         raise HTTPException(status_code=404, detail="Provider not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+
+    # Guard against accidental API key loss from clients that send `api_key: null`
+    # when the user did not intend to clear the stored key.
+    fields = payload.model_dump(exclude_unset=True)
+    for field, value in fields.items():
+        if field == "api_key":
+            if isinstance(value, str):
+                trimmed = value.strip()
+                # empty string means explicit clear
+                record.api_key = trimmed or None
+                logger.info(
+                    "Provider %s (%s) api_key updated via /providers/%s (len=%s)",
+                    record.id,
+                    record.name,
+                    provider_id,
+                    len(trimmed),
+                )
+            # explicit null is treated as "no change" to avoid silent data loss
+            elif value is None:
+                logger.info(
+                    "Provider %s (%s) api_key null ignored via /providers/%s",
+                    record.id,
+                    record.name,
+                    provider_id,
+                )
+            continue
         setattr(record, field, value)
     db.commit()
     db.refresh(record)

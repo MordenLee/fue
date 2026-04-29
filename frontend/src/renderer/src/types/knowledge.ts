@@ -99,4 +99,8 @@ export interface SearchResult {
   chunk_index: number
   content: string
   score: number
+  citation_title?: string | null
+  citation_authors?: string[] | null
+  citation_year?: number | null
+  citation_id?: number | null
 }

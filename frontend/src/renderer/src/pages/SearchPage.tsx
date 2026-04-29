@@ -8,6 +8,7 @@ import { ResizablePanel } from '../components/ui/ResizablePanel'
 import { KBSelectionModal } from '../components/search/KBSelectionModal'
 import { useKBSearch } from '../hooks/useKBSearch'
 import { useFolders } from '../hooks/useFolders'
+import { useSettings } from '../contexts/SettingsContext'
 import { knowledgeService } from '../services/knowledge'
 import { storageGet, storageSet, storageRemove } from '../utils/storage'
 import type { SearchHistoryItem, SearchOptions } from '../types/search'
@@ -20,6 +21,7 @@ function generateId() {
 
 export function SearchPage() {
   const { language, t } = useI18n()
+  const { settings } = useSettings()
   const [history, setHistory] = useState<SearchHistoryItem[]>(() => storageGet<SearchHistoryItem[]>('search_history', []))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [options, setOptions] = useState<SearchOptions>({ kbIds: [], searchType: 'semantic', topK: 5, rerank: true, diversity: false })
@@ -41,10 +43,11 @@ export function SearchPage() {
   const removeKb = (id: number) => {
     setOptions(prev => ({ ...prev, kbIds: prev.kbIds.filter(x => x !== id) }))
   }
+  const hybridKeywordFloorTopK = settings?.hybrid_keyword_floor_top_k ?? 10
   // ---------------------
 
   const handleSearch = useCallback(async (query: string) => {
-    const searchedResults = await search(query, options)
+    const searchedResults = await search(query, options, hybridKeywordFloorTopK)
     setHasSearched(true)
     const item: SearchHistoryItem = {
       id: generateId(),
@@ -68,20 +71,36 @@ export function SearchPage() {
       return next
     })
     setSelectedId(item.id)
-  }, [options, search])
+  }, [hybridKeywordFloorTopK, options, search])
 
   const handleSelectHistory = useCallback((item: SearchHistoryItem) => {
     setSelectedId(item.id)
-    setOptions({ kbIds: item.kbIds, searchType: item.searchType, topK: item.topK, rerank: item.rerank, diversity: item.diversity ?? false })
+    setOptions({
+      kbIds: item.kbIds,
+      searchType: (item.searchType ?? 'semantic') as SearchOptions['searchType'],
+      topK: item.topK,
+      rerank: item.rerank,
+      diversity: item.diversity ?? false
+    })
     // Try to load cached results first; fall back to live search if not found
     const cached = storageGet<SearchResult[] | null>(`search_results_${item.id}`, null)
     if (cached && cached.length > 0) {
       loadCachedResults(cached)
     } else {
-      search(item.query, { kbIds: item.kbIds, searchType: item.searchType, topK: item.topK, rerank: item.rerank, diversity: item.diversity ?? false })
+      search(
+        item.query,
+        {
+          kbIds: item.kbIds,
+          searchType: (item.searchType ?? 'semantic') as SearchOptions['searchType'],
+          topK: item.topK,
+          rerank: item.rerank,
+          diversity: item.diversity ?? false
+        },
+        hybridKeywordFloorTopK
+      )
     }
     setHasSearched(true)
-  }, [search])
+  }, [hybridKeywordFloorTopK, search])
 
   const handleDelete = useCallback((id: string) => {
     setHistory((prev) => {

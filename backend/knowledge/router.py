@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,12 +22,14 @@ from knowledge.models import (
     KnowledgeBaseUpdate,
     SearchResult,
 )
+from knowledge.documents.models import Citation
 from providers.models import AIModel
 
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge-bases"])
 
 logger = logging.getLogger(__name__)
 COLLECTION_PREFIX = "kb_"
+_KEYWORD_SPLIT_RE = re.compile(r"[\s\u3000]+")
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +90,60 @@ def _get_kb(kb_id: int, db: Session) -> KnowledgeBase:
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     return kb
+
+
+def _get_citation_for_document(document_id: int, db: Session) -> dict | None:
+    """Fetch citation info for a document if it exists."""
+    citation = db.query(Citation).filter(Citation.document_file_id == document_id).first()
+    if not citation:
+        return None
+    return {
+        "citation_id": citation.id,
+        "citation_title": citation.title,
+        "citation_authors": citation.authors or [],
+        "citation_year": citation.year,
+    }
+
+
+def _split_keyword_terms(query: str) -> list[str]:
+    """Split a keyword query on whitespace and remove case-insensitive duplicates."""
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw in _KEYWORD_SPLIT_RE.split(query.strip()):
+        term = raw.strip()
+        if not term:
+            continue
+        lowered = term.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        terms.append(term)
+    return terms
+
+
+def _keyword_match_stats(text: str, terms: list[str]) -> tuple[int, int, int]:
+    lowered_text = text.lower()
+    distinct_hits = 0
+    total_hits = 0
+    first_pos = len(lowered_text)
+
+    for term in terms:
+        lowered_term = term.lower()
+        hits = lowered_text.count(lowered_term)
+        if hits <= 0:
+            continue
+        distinct_hits += 1
+        total_hits += hits
+        pos = lowered_text.find(lowered_term)
+        if pos >= 0:
+            first_pos = min(first_pos, pos)
+
+    return distinct_hits, total_hits, first_pos
+
+
+def _keyword_sort_key(text: str, terms: list[str]) -> tuple[int, int, int, int]:
+    distinct_hits, total_hits, first_pos = _keyword_match_stats(text, terms)
+    return (-distinct_hits, -total_hits, first_pos, len(text))
 
 
 # ============================= Knowledge Bases =============================
@@ -368,53 +425,50 @@ def _keyword_search(collection, q: str, top_k: int) -> list[SearchResult]:
     """ChromaDB where_document keyword search.
 
     Strategy:
-    1. AND: all query words must appear in the chunk (tried first).
-    2. OR: any word present — fallback when AND yields nothing.
+    1. Split whitespace-separated keywords.
+    2. Retrieve candidates with OR matching when multiple keywords are given.
+    3. Rank by keyword richness: more distinct keywords matched first,
+       then by total occurrence count.
 
-    Scoring: fraction of query words found case-insensitively in each chunk.
-    Note: ChromaDB $contains is case-sensitive for filtering; scoring uses lower().
+    Score field remains the match ratio for display purposes.
+    Note: ChromaDB $contains is case-sensitive for filtering; ranking uses lower().
     """
-    words = [w for w in q.strip().split() if w]
+    words = _split_keyword_terms(q)
     if not words:
         return []
+
+    candidate_limit = max(top_k * 5, top_k)
 
     where_doc = (
         {"$contains": words[0]}
         if len(words) == 1
-        else {"$and": [{"$contains": w} for w in words]}
+        else {"$or": [{"$contains": w} for w in words]}
     )
     raw = collection.get(
         where_document=where_doc,
         include=["documents", "metadatas"],
-        limit=top_k,
+        limit=candidate_limit,
     )
-
-    # Fallback to OR when AND yields nothing
-    if not raw["ids"] and len(words) > 1:
-        where_doc = {"$or": [{"$contains": w} for w in words]}
-        raw = collection.get(
-            where_document=where_doc,
-            include=["documents", "metadatas"],
-            limit=top_k,
-        )
 
     if not raw["ids"]:
         return []
 
     results: list[SearchResult] = []
     for doc_text, meta in zip(raw["documents"], raw["metadatas"]):
-        doc_lower = doc_text.lower()
-        matched = sum(1 for w in words if w.lower() in doc_lower)
+        distinct_hits, _total_hits, _first_pos = _keyword_match_stats(doc_text, words)
+        if distinct_hits <= 0:
+            continue
         results.append(
             SearchResult(
                 document_id=meta["document_file_id"],
                 original_filename=meta["original_filename"],
                 chunk_index=meta["chunk_index"],
                 content=doc_text,
-                score=round(matched / len(words), 6),
+                score=round(distinct_hits / len(words), 6),
             )
         )
-    return sorted(results, key=lambda r: r.score, reverse=True)
+    results.sort(key=lambda r: _keyword_sort_key(r.content, words))
+    return results[:top_k]
 
 
 @router.get("/{kb_id}/search", response_model=list[SearchResult])
@@ -525,28 +579,36 @@ def search_knowledge_base(
                 # Fall back to cosine-score results instead of failing the whole request
                 ranked = None
             if ranked is not None:
-                results = [
-                    SearchResult(
-                        document_id=metas_list[r.index]["document_file_id"],
-                        original_filename=metas_list[r.index]["original_filename"],
-                        chunk_index=metas_list[r.index]["chunk_index"],
-                        content=r.document,
-                        score=r.score,
-                    )
-                    for r in ranked
-                ]
+                results = []
+                for r in ranked:
+                    doc_id = metas_list[r.index]["document_file_id"]
+                    citation_info = _get_citation_for_document(doc_id, db)
+                    result_data = {
+                        "document_id": doc_id,
+                        "original_filename": metas_list[r.index]["original_filename"],
+                        "chunk_index": metas_list[r.index]["chunk_index"],
+                        "content": r.document,
+                        "score": r.score,
+                    }
+                    if citation_info:
+                        result_data.update(citation_info)
+                    results.append(SearchResult(**result_data))
                 return _apply_diversity(results) if diversity else results
 
     # No rerank — cosine score ≈ 1 − distance (valid for L2 distances on normalised vectors)
-    results = [
-        SearchResult(
-            document_id=metas_list[i]["document_file_id"],
-            original_filename=metas_list[i]["original_filename"],
-            chunk_index=metas_list[i]["chunk_index"],
-            content=docs_list[i],
-            score=round(1.0 - distances[i], 6),
-        )
-        for i in range(min(effective_top_k, len(ids_list)))
-    ]
+    results = []
+    for i in range(min(effective_top_k, len(ids_list))):
+        doc_id = metas_list[i]["document_file_id"]
+        citation_info = _get_citation_for_document(doc_id, db)
+        result_data = {
+            "document_id": doc_id,
+            "original_filename": metas_list[i]["original_filename"],
+            "chunk_index": metas_list[i]["chunk_index"],
+            "content": docs_list[i],
+            "score": round(1.0 - distances[i], 6),
+        }
+        if citation_info:
+            result_data.update(citation_info)
+        results.append(SearchResult(**result_data))
     results = sorted(results, key=lambda r: r.score, reverse=True)
     return _apply_diversity(results) if diversity else results

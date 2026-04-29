@@ -81,6 +81,7 @@ export function streamRequest(
   onEvent: (event: SSEEvent) => void
 ): AbortController {
   const controller = new AbortController()
+  let sawDone = false
 
   ;(async () => {
     const res = await fetchWithBackendRetry(path, {
@@ -113,17 +114,18 @@ export function streamRequest(
         const raw = line.slice(6)
 
         if (raw === '[DONE]') {
+          sawDone = true
           onEvent({ type: 'done' })
         } else if (raw.startsWith('[SEARCHING] ')) {
           try { onEvent({ type: 'searching', data: JSON.parse(raw.slice(12)) }) } catch { /* ignore parse error */ }
         } else if (raw.startsWith('[TOOL_CALL] ')) {
-          onEvent({ type: 'tool_call', data: JSON.parse(raw.slice(12)) })
+          try { onEvent({ type: 'tool_call', data: JSON.parse(raw.slice(12)) }) } catch { /* ignore parse error */ }
         } else if (raw.startsWith('[CITATIONS] ')) {
-          onEvent({ type: 'citations', data: JSON.parse(raw.slice(12)) })
+          try { onEvent({ type: 'citations', data: JSON.parse(raw.slice(12)) }) } catch { /* ignore parse error */ }
         } else if (raw.startsWith('[SUMMARY] ')) {
           onEvent({ type: 'summary', data: JSON.parse(raw.slice(10)) })
         } else if (raw.startsWith('[PROGRESS] ')) {
-          onEvent({ type: 'progress', data: JSON.parse(raw.slice(11)) })
+          try { onEvent({ type: 'progress', data: JSON.parse(raw.slice(11)) }) } catch { /* ignore parse error */ }
         } else if (raw === '[CLEAR]') {
           onEvent({ type: 'clear' })
         } else if (raw.startsWith('[REPLACE] ')) {
@@ -134,6 +136,12 @@ export function streamRequest(
           onEvent({ type: 'token', data: raw })
         }
       }
+    }
+
+    // Some backend/provider paths may close the stream without an explicit
+    // [DONE] marker. Treat EOF as done so UI can finalize the turn.
+    if (!sawDone && !controller.signal.aborted) {
+      onEvent({ type: 'done' })
     }
   })().catch((err) => {
     if (err.name !== 'AbortError') {

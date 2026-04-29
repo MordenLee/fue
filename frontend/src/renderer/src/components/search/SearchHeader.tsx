@@ -19,10 +19,11 @@ export function SearchHeader({ options, onChange }: SearchHeaderProps) {
         <span className="text-xs text-neutral-500 dark:text-neutral-400 shrink-0">{t('search.search_type')}</span>
         <Select
           value={options.searchType}
-          onValueChange={(v) => onChange({ searchType: v as 'semantic' | 'keyword' })}
+          onValueChange={(v) => onChange({ searchType: v as 'semantic' | 'keyword' | 'hybrid' })}
           options={[
             { label: t('search.type_semantic'), value: 'semantic' },
-            { label: t('search.type_keyword'), value: 'keyword' }
+            { label: t('search.type_keyword'), value: 'keyword' },
+            { label: t('search.type_hybrid'), value: 'hybrid' }
           ]}
         />
       </div>

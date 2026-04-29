@@ -6,12 +6,27 @@ export function useMessages(conversationId: number | null) {
   const [messages, setMessages] = useState<MessageOut[]>([])
   const [loading, setLoading] = useState(false)
 
-  const load = useCallback(async () => {
+  /**
+   * Reload messages from the DB.
+   *
+   * @param retainLocal  An optional locally-constructed message (temp ID) that
+   *   should be appended to the DB result if the DB doesn't already contain it
+   *   (identified by matching role + content).  This prevents a DB write failure
+   *   from silently discarding a just-received assistant response.
+   */
+  const load = useCallback(async (retainLocal?: MessageOut) => {
     if (!conversationId) { setMessages([]); return }
     try {
       setLoading(true)
       const data = await conversationsService.getMessages(conversationId)
-      setMessages(data)
+      if (retainLocal) {
+        const inDb = data.some(
+          (m) => m.role === retainLocal.role && m.content === retainLocal.content
+        )
+        setMessages(inDb ? data : [...data, retainLocal])
+      } else {
+        setMessages(data)
+      }
     } catch (err) {
       console.error('Failed to load messages', err)
     } finally {

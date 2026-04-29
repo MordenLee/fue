@@ -10,6 +10,8 @@ interface ToolCallEvent {
 }
 
 export interface ChunkInfo {
+  chunk_key: string
+  citation_num: number
   document_id: number
   original_filename: string
   chunk_index: number
@@ -19,8 +21,47 @@ export interface ChunkInfo {
   kb_id?: number
 }
 
+function normalizeReferenceChunks(references: ReferenceItem[]): ChunkInfo[] {
+  const chunks: ChunkInfo[] = []
+  const seen = new Set<string>()
+
+  for (const r of references) {
+    const nestedChunks = r.chunks && r.chunks.length > 0
+      ? r.chunks
+      : [{
+          chunk_index: r.chunk_index ?? r.ref_num,
+          chunk_content: r.chunk_content || r.formatted_citation,
+          knowledge_base_id: r.knowledge_base_id,
+          score: r.score,
+        }]
+
+    for (const c of nestedChunks) {
+      const chunkIndex = c.chunk_index
+      const chunkKey = `${r.document_file_id}:${chunkIndex}:${c.chunk_content}`
+      if (seen.has(chunkKey)) continue
+      seen.add(chunkKey)
+
+      chunks.push({
+        chunk_key: chunkKey,
+        citation_num: r.ref_num,
+        document_id: r.document_file_id,
+        original_filename: r.original_filename,
+        chunk_index: chunkIndex,
+        content: c.chunk_content || r.formatted_citation,
+        score: c.score ?? r.score ?? 0,
+        formatted_citation: r.formatted_citation,
+        kb_id: c.knowledge_base_id ?? r.knowledge_base_id,
+      })
+    }
+  }
+
+  return chunks
+}
+
 export interface UseStreamingChatReturn {
   isStreaming: boolean
+  conversationId: number | null
+  modelId: number | null
   isSearching: boolean
   searchQuery: string | null
   currentResponse: string
@@ -48,6 +89,8 @@ function toErrorMessage(err: unknown): string {
 
 export function useStreamingChat(): UseStreamingChatReturn {
   const [isStreaming, setIsStreaming] = useState(false)
+  const [conversationId, setConversationId] = useState<number | null>(null)
+  const [streamModelId, setStreamModelId] = useState<number | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [searchQuery, setSearchQuery] = useState<string | null>(null)
   const [currentResponse, setCurrentResponse] = useState('')
@@ -56,6 +99,27 @@ export function useStreamingChat(): UseStreamingChatReturn {
   const [citations, setCitations] = useState<UseStreamingChatReturn['citations']>(null)
   const [error, setError] = useState<string | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
+  const activeRequestIdRef = useRef(0)
+  const idleTimerRef = useRef<number | null>(null)
+
+  const clearIdleTimer = useCallback(() => {
+    if (idleTimerRef.current != null) {
+      window.clearTimeout(idleTimerRef.current)
+      idleTimerRef.current = null
+    }
+  }, [])
+
+  const armIdleTimer = useCallback((requestId: number) => {
+    clearIdleTimer()
+    idleTimerRef.current = window.setTimeout(() => {
+      if (activeRequestIdRef.current !== requestId) return
+      controllerRef.current?.abort()
+      controllerRef.current = null
+      setError('Stream timed out: no response from model, please retry.')
+      setIsStreaming(false)
+      setIsSearching(false)
+    }, 120000)
+  }, [clearIdleTimer])
 
   const handleEvent = useCallback((event: SSEEvent) => {
     switch (event.type) {
@@ -75,17 +139,7 @@ export function useStreamingChat(): UseStreamingChatReturn {
         const { references, cite_map } = event.data
         setCitations({ references, cite_map })
         setCurrentResponse((prev) => parseCiteMarkers(prev, cite_map))
-        // Extract chunks from references — prefer actual chunk text over bibliography
-        const chunks: ChunkInfo[] = references.map((r) => ({
-          document_id: r.document_file_id,
-          original_filename: r.original_filename,
-          chunk_index: r.ref_num,
-          content: r.chunk_content || r.formatted_citation,
-          score: r.score ?? 0,
-          formatted_citation: r.formatted_citation,
-          kb_id: r.knowledge_base_id,
-        }))
-        setRetrievedChunks(chunks)
+        setRetrievedChunks(normalizeReferenceChunks(references))
         break
       }
       case 'clear':
@@ -118,8 +172,15 @@ export function useStreamingChat(): UseStreamingChatReturn {
       conversationId?: number,
       streamingEnabled = true
     ) => {
+      // Ensure only one in-flight request can update state.
+      controllerRef.current?.abort()
+      const requestId = activeRequestIdRef.current + 1
+      activeRequestIdRef.current = requestId
+
       // Reset state
       setIsStreaming(true)
+      setConversationId(options?.conversation_id ?? conversationId ?? null)
+      setStreamModelId(modelId)
       setIsSearching(false)
       setSearchQuery(null)
       setCurrentResponse('')
@@ -129,11 +190,26 @@ export function useStreamingChat(): UseStreamingChatReturn {
       setError(null)
 
       if (streamingEnabled) {
+        const scopedHandleEvent = (event: SSEEvent) => {
+          if (activeRequestIdRef.current !== requestId) {
+            return
+          }
+          armIdleTimer(requestId)
+          handleEvent(event)
+          if (event.type === 'done' || event.type === 'error') {
+            clearIdleTimer()
+            if (controllerRef.current === controller) {
+              controllerRef.current = null
+            }
+          }
+        }
+
         const controller = options
-          ? streamRAG(modelId, messages, options, handleEvent)
-          : streamChat(modelId, messages, conversationId, handleEvent)
+          ? streamRAG(modelId, messages, options, scopedHandleEvent)
+          : streamChat(modelId, messages, conversationId, scopedHandleEvent)
 
         controllerRef.current = controller
+        armIdleTimer(requestId)
         return
       }
 
@@ -145,31 +221,25 @@ export function useStreamingChat(): UseStreamingChatReturn {
           if (options) {
             setIsSearching(true)
             const res = await ragChat(modelId, messages, options, controller.signal)
-            if (controller.signal.aborted) return
+            if (controller.signal.aborted || activeRequestIdRef.current !== requestId) return
 
             setCurrentResponse(res.content)
             const refs = res.references ?? []
             if (refs.length > 0) {
               setCitations({ references: refs, cite_map: {} })
-              const chunks: ChunkInfo[] = refs.map((r) => ({
-                document_id: r.document_file_id,
-                original_filename: r.original_filename,
-                chunk_index: r.ref_num,
-                content: r.chunk_content || r.formatted_citation,
-                score: 0
-              }))
-              setRetrievedChunks(chunks)
+              setRetrievedChunks(normalizeReferenceChunks(refs))
             }
           } else {
             const res = await chat(modelId, messages, conversationId, controller.signal)
-            if (controller.signal.aborted) return
+            if (controller.signal.aborted || activeRequestIdRef.current !== requestId) return
             setCurrentResponse(res.content)
           }
         } catch (err) {
           if (err instanceof Error && err.name === 'AbortError') return
+          if (activeRequestIdRef.current !== requestId) return
           setError(toErrorMessage(err))
         } finally {
-          if (!controller.signal.aborted) {
+          if (!controller.signal.aborted && activeRequestIdRef.current === requestId) {
             setIsSearching(false)
             setIsStreaming(false)
           }
@@ -179,14 +249,19 @@ export function useStreamingChat(): UseStreamingChatReturn {
         }
       })()
     },
-    [handleEvent]
+    [handleEvent, armIdleTimer, clearIdleTimer]
   )
 
   const abort = useCallback(() => {
+    activeRequestIdRef.current += 1
+    clearIdleTimer()
     controllerRef.current?.abort()
+    controllerRef.current = null
     setIsStreaming(false)
+    setConversationId(null)
+    setStreamModelId(null)
     setIsSearching(false)
-  }, [])
+  }, [clearIdleTimer])
 
-  return { isStreaming, isSearching, searchQuery, currentResponse, toolCalls, retrievedChunks, citations, error, send, abort }
+  return { isStreaming, conversationId, modelId: streamModelId, isSearching, searchQuery, currentResponse, toolCalls, retrievedChunks, citations, error, send, abort }
 }

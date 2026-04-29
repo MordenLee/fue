@@ -87,6 +87,13 @@ class Message(Base):
         comment="Citation references for RAG assistant messages",
     )
 
+    # Model used to generate this assistant message
+    model_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("ai_models.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+        comment="AI model used to generate this message (assistant only)",
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -105,6 +112,7 @@ class MessageOut(BaseModel):
     content: str
     position: int
     references: Optional[list] = None
+    model_id: Optional[int] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -22,6 +22,7 @@ export interface MessageOut {
   content: string
   position: number
   references: ReferenceItem[] | null
+  model_id?: number | null
   created_at: string
 }
 
@@ -30,9 +31,16 @@ export interface ReferenceItem {
   document_file_id: number
   original_filename: string
   formatted_citation: string
+  chunk_index?: number
   chunk_content?: string
   knowledge_base_id?: number
   score?: number
+  chunks?: Array<{
+    chunk_index: number
+    chunk_content: string
+    knowledge_base_id?: number
+    score?: number
+  }>
 }
 
 export interface ConversationSearchResult {

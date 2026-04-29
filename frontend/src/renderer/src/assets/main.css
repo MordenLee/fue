@@ -83,6 +83,25 @@ body {
   color: #60a5fa;
 }
 
+/* ─── KaTeX formula overflow fix ─── */
+/* Block-level ($$...$$) equations: scroll horizontally instead of overflowing */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px; /* reserve space for the scrollbar */
+}
+
+/* Prevent the KaTeX container itself from causing layout overflow */
+.katex-display > .katex {
+  white-space: normal;
+  max-width: 100%;
+}
+
+/* Inline equations: allow line-break at equation boundary */
+.katex {
+  overflow-wrap: break-word;
+}
+
 .prose-invert code {
   background: rgba(255, 255, 255, 0.1);
   padding: 2px 4px;

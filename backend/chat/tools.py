@@ -13,6 +13,7 @@ Usage
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 
 from langchain_core.tools import tool
@@ -31,11 +32,67 @@ class RetrievedChunk:
     original_filename: str
     knowledge_base_id: int
     content: str
-    score: float             # L2 / cosine distance — lower means more relevant
+    score: float             # Vector: lower is better; keyword: higher is better
 
 
-def make_search_tool(kb_ids: list[int], db: Session):
+_KEYWORD_SPLIT_RE = re.compile(r"[\s\u3000]+")
+
+
+def _split_keyword_terms(query: str) -> list[str]:
+    """Split a keyword query on whitespace and remove case-insensitive duplicates."""
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw in _KEYWORD_SPLIT_RE.split(query.strip()):
+        term = raw.strip()
+        if not term:
+            continue
+        lowered = term.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        terms.append(term)
+    return terms
+
+
+def _keyword_match_stats(text: str, terms: list[str]) -> tuple[int, int, int]:
+    """Return (distinct_terms_matched, total_occurrences, first_match_pos)."""
+    lowered_text = text.lower()
+    distinct_hits = 0
+    total_hits = 0
+    first_pos = len(lowered_text)
+
+    for term in terms:
+        lowered_term = term.lower()
+        hits = lowered_text.count(lowered_term)
+        if hits <= 0:
+            continue
+        distinct_hits += 1
+        total_hits += hits
+        pos = lowered_text.find(lowered_term)
+        if pos >= 0:
+            first_pos = min(first_pos, pos)
+
+    return distinct_hits, total_hits, first_pos
+
+
+def _keyword_sort_key(text: str, terms: list[str]) -> tuple[int, int, int, int]:
+    """Sort richer keyword matches first: more distinct terms, then more hits."""
+    distinct_hits, total_hits, first_pos = _keyword_match_stats(text, terms)
+    return (-distinct_hits, -total_hits, first_pos, len(text))
+
+
+def make_search_tool(kb_ids: list[int], db: Session, initial_cite_num: int = 1):
     """Create a knowledge-base search tool and a shared retrieved-chunks list.
+
+    Parameters
+    ----------
+    kb_ids:
+        Knowledge base IDs to search.
+    db:
+        Active SQLAlchemy session.
+    initial_cite_num:
+        The first CITE-N number to assign.  Pass ``max(existing_ref_nums) + 1``
+        so that chunk numbers are globally unique across conversation turns.
 
     Returns
     -------
@@ -43,7 +100,7 @@ def make_search_tool(kb_ids: list[int], db: Session):
     retrieved : list[RetrievedChunk] — populated in-place on every tool invocation.
     """
     retrieved: list[RetrievedChunk] = []
-    _cite_counter = [0]  # mutable so the closure can increment it
+    _cite_counter = [initial_cite_num - 1]  # incremented before use, so first label = initial_cite_num
 
     @tool
     def search_knowledge_base(
@@ -53,21 +110,20 @@ def make_search_tool(kb_ids: list[int], db: Session):
     ) -> str:
         """Search the knowledge base for document chunks relevant to the query.
 
-        Use this tool whenever you need factual information from the knowledge
-        base. Include the [CITE-N] marker from each result immediately after
+        Call this tool ONCE per user question with the most relevant query.
+        Include the [CITE-N] marker from each result immediately after
         any statement that is based on that chunk.
-
-        Call this tool again with a different query or mode when the user asks
-        follow-up questions such as "what else mentions X?" or "find more studies
-        about Y?" to retrieve fresh results.
+        After receiving the results, synthesize a complete answer — do NOT
+        call this tool again in the same turn.
 
         Args:
             query: Natural-language query describing the information needed.
             mode:  Search strategy — one of:
                    "vector"  (default) semantic / embedding similarity search,
                              best for conceptual or paraphrased questions;
-                   "keyword" exact-word match, best when the user mentions
-                             specific terms, names, or codes;
+                   "keyword" exact-word match with whitespace-separated keyword
+                             support, best when the user mentions specific
+                             terms, names, or codes;
                    "hybrid"  run both and merge results, use when unsure.
             top_n: Number of chunks to retrieve (1–50). Use 0 to apply the
                    global default. Increase (e.g. 10–20) for broad surveys
@@ -84,6 +140,9 @@ def make_search_tool(kb_ids: list[int], db: Session):
         _row = db.get(Setting, "rag_top_k")
         _default_k = int(_row.value) if _row else int(DEFAULTS["rag_top_k"])
         effective_k = max(1, min(top_n, 50)) if top_n and top_n > 0 else _default_k
+        _kw_floor_row = db.get(Setting, "hybrid_keyword_floor_top_k")
+        hybrid_kw_floor = int(_kw_floor_row.value) if _kw_floor_row else int(DEFAULTS["hybrid_keyword_floor_top_k"])
+        hybrid_kw_floor = max(1, min(hybrid_kw_floor, 100))
 
         if mode not in ("vector", "keyword", "hybrid"):
             mode = "vector"
@@ -110,30 +169,27 @@ def make_search_tool(kb_ids: list[int], db: Session):
 
                 # ---- keyword search helper --------------------------------
                 def _keyword(q: str, k: int) -> list[RetrievedChunk]:
-                    words = [w for w in q.strip().split() if w]
+                    words = _split_keyword_terms(q)
                     if not words:
                         return []
+
+                    candidate_limit = min(max(k * 5, k), coll_size)
                     where_doc = (
                         {"$contains": words[0]}
                         if len(words) == 1
-                        else {"$and": [{"$contains": w} for w in words]}
+                        else {"$or": [{"$contains": w} for w in words]}
                     )
                     raw = collection.get(
                         where_document=where_doc,
                         include=["documents", "metadatas"],
-                        limit=k,
+                        limit=candidate_limit,
                     )
-                    if not raw["ids"] and len(words) > 1:
-                        where_doc = {"$or": [{"$contains": w} for w in words]}
-                        raw = collection.get(
-                            where_document=where_doc,
-                            include=["documents", "metadatas"],
-                            limit=k,
-                        )
+
                     out = []
                     for doc_text, meta in zip(raw["documents"], raw["metadatas"]):
-                        doc_lower = doc_text.lower()
-                        matched = sum(1 for w in words if w.lower() in doc_lower)
+                        distinct_hits, total_hits, _first_pos = _keyword_match_stats(doc_text, words)
+                        if distinct_hits <= 0:
+                            continue
                         out.append(RetrievedChunk(
                             cite_label="",
                             document_file_id=int(meta.get("document_file_id", 0)),
@@ -141,9 +197,10 @@ def make_search_tool(kb_ids: list[int], db: Session):
                             original_filename=meta.get("original_filename", "unknown"),
                             knowledge_base_id=kb_id,
                             content=doc_text,
-                            score=round(matched / len(words), 6),
+                            score=round(distinct_hits / len(words), 6),
                         ))
-                    return out
+                    out.sort(key=lambda chunk: _keyword_sort_key(chunk.content, words))
+                    return out[:k]
 
                 # ---- vector search helper ---------------------------------
                 def _vector(q: str, k: int) -> list[RetrievedChunk]:
@@ -189,15 +246,23 @@ def make_search_tool(kb_ids: list[int], db: Session):
                     kb_chunks = _keyword(query, effective_k)
                 elif mode == "hybrid":
                     vec_chunks = _vector(query, effective_k)
-                    kw_chunks  = _keyword(query, effective_k)
-                    # merge by content dedup, prefer vector ordering
+                    kw_chunks  = _keyword(query, hybrid_kw_floor)
+                    # Keep vector hits, then guarantee a keyword budget in hybrid mode.
                     seen: set[str] = set()
                     kb_chunks = []
-                    for c in vec_chunks + kw_chunks:
+                    for c in vec_chunks:
                         if c.content not in seen:
                             seen.add(c.content)
                             kb_chunks.append(c)
-                    kb_chunks = kb_chunks[:effective_k]
+                    kw_added = 0
+                    for c in kw_chunks:
+                        if c.content in seen:
+                            continue
+                        seen.add(c.content)
+                        kb_chunks.append(c)
+                        kw_added += 1
+                        if kw_added >= hybrid_kw_floor:
+                            break
                 else:
                     kb_chunks = _vector(query, effective_k)
 
@@ -210,8 +275,27 @@ def make_search_tool(kb_ids: list[int], db: Session):
         if not raw_chunks:
             return "No relevant information found in the knowledge base."
 
+        if mode == "keyword":
+            terms = _split_keyword_terms(query)
+            raw_chunks.sort(key=lambda chunk: _keyword_sort_key(chunk.content, terms))
+            raw_chunks = raw_chunks[:effective_k]
+
         # Optional reranking (uses the first KB that has a rerank model)
-        raw_chunks = _maybe_rerank(query, raw_chunks, kb_ids, db)
+        raw_chunks = _maybe_rerank(
+            query,
+            raw_chunks,
+            kb_ids,
+            db,
+            preserve_order=mode in ("keyword", "hybrid"),
+        )
+
+        # Global cap: hybrid mode has a larger cap so keyword floor can take effect.
+        final_cap = effective_k + hybrid_kw_floor if mode == "hybrid" else effective_k
+        raw_chunks = raw_chunks[:final_cap]
+
+        # Max chars per chunk to prevent a single oversized document chunk from
+        # flooding the LLM context. ~1200 chars ≈ 600 tokens, enough for meaning.
+        _MAX_CHUNK_CHARS = 1200
 
         # Assign sequential cite labels and register in the shared list
         parts: list[str] = []
@@ -219,10 +303,13 @@ def make_search_tool(kb_ids: list[int], db: Session):
             _cite_counter[0] += 1
             chunk.cite_label = f"[CITE-{_cite_counter[0]}]"
             retrieved.append(chunk)
+            display_content = chunk.content[:_MAX_CHUNK_CHARS]
+            if len(chunk.content) > _MAX_CHUNK_CHARS:
+                display_content += "…[truncated]"
             parts.append(
                 f"{chunk.cite_label} "
                 f"(file: {chunk.original_filename}, paragraph {chunk.chunk_index + 1})\n"
-                f"{chunk.content}"
+                f"{display_content}"
             )
 
         return "\n\n---\n\n".join(parts)
@@ -239,6 +326,7 @@ def _maybe_rerank(
     chunks: list[RetrievedChunk],
     kb_ids: list[int],
     db: Session,
+    preserve_order: bool = False,
 ) -> list[RetrievedChunk]:
     """Apply reranking if any KB has a rerank_model_id configured."""
     from knowledge.models import KnowledgeBase
@@ -253,16 +341,22 @@ def _maybe_rerank(
             break
 
     if rerank_model_id is None:
+        if preserve_order:
+            return chunks
         return sorted(chunks, key=lambda c: c.score)
 
     rerank_model = db.query(AIModel).filter(AIModel.id == rerank_model_id).first()
     if not rerank_model:
+        if preserve_order:
+            return chunks
         return sorted(chunks, key=lambda c: c.score)
 
     try:
         reranker = build_reranker(rerank_model)
-        ranked = reranker.rerank(query, [c.content for c in chunks])
+        ranked = reranker.rerank(query, [c.content for c in chunks], top_n=len(chunks))
         return [chunks[r.index] for r in ranked]
     except Exception as exc:
         logger.warning("RAG rerank failed: %s — using distance order", exc)
+        if preserve_order:
+            return chunks
         return sorted(chunks, key=lambda c: c.score)

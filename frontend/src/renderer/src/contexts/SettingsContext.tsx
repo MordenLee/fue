@@ -21,6 +21,7 @@ const defaultSettings: SettingsOut = {
   embed_use_model_qps: false,
   kb_index_max_workers: 4,
   rag_top_k: 5,
+  hybrid_keyword_floor_top_k: 10,
   default_embed_model_id: null,
   pdf_parser: 'pdfplumber',
   docx_parser: 'python-docx',
@@ -28,7 +29,12 @@ const defaultSettings: SettingsOut = {
   chat_summary_model_id: null,
   info_extract_model_id: null,
   doc_clean_keep_references: false,
-  doc_clean_keep_annotations: false
+  doc_clean_keep_annotations: false,
+  chat_citation_mode: 'document',
+  chat_citation_style: 'apa',
+  chat_history_turns: 5,
+  chat_max_tool_rounds: 5,
+  chat_compress_model_id: null,
 }
 
 const SettingsContext = createContext<SettingsContextType>({

@@ -84,7 +84,7 @@ export function MarkdownLatexRenderer({ content, isStreaming, className = '', on
   )
 
   return (
-    <div className={`markdown-body prose prose-invert prose-sm max-w-none
+    <div className={`markdown-body prose prose-invert prose-sm max-w-none overflow-x-hidden
       prose-pre:bg-neutral-900 prose-pre:p-0
       prose-code:before:hidden prose-code:after:hidden
       prose-code:bg-white/10 prose-code:rounded prose-code:px-1.5 prose-code:py-0.5 prose-code:text-xs

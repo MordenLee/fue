@@ -8,19 +8,61 @@ export function useKBSearch() {
   const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const search = useCallback(async (query: string, opts: SearchOptions): Promise<SearchResult[]> => {
+  const search = useCallback(async (query: string, opts: SearchOptions, hybridKeywordFloorTopK = 10): Promise<SearchResult[]> => {
     if (!query.trim() || opts.kbIds.length === 0) return []
 
     const execute = async (): Promise<SearchResult[]> => {
       // Search each KB in parallel, tagging each result with its source kb_id
-      const promises = opts.kbIds.map((kbId) =>
-        knowledgeService.search(kbId, query, {
-          search_type: opts.searchType,
-          top_k: opts.topK,
-          rerank: opts.rerank,
-          diversity: opts.diversity
-        }).then(rows => rows.map(r => ({ ...r, kb_id: kbId })))
-      )
+      const promises = opts.kbIds.map(async (kbId) => {
+        if (opts.searchType !== 'hybrid') {
+          const rows = await knowledgeService.search(kbId, query, {
+            search_type: opts.searchType,
+            top_k: opts.topK,
+            rerank: opts.rerank,
+            diversity: opts.diversity
+          })
+          return rows.map(r => ({ ...r, kb_id: kbId }))
+        }
+
+        // Hybrid mode for Search page: semantic first, then ensure a keyword floor.
+        const [semanticRows, keywordRows] = await Promise.all([
+          knowledgeService.search(kbId, query, {
+            search_type: 'semantic',
+            top_k: opts.topK,
+            rerank: opts.rerank,
+            diversity: opts.diversity
+          }),
+          knowledgeService.search(kbId, query, {
+            search_type: 'keyword',
+            top_k: Math.max(1, Math.min(100, hybridKeywordFloorTopK)),
+            rerank: false,
+            diversity: opts.diversity
+          })
+        ])
+
+        const merged: SearchResult[] = []
+        const seen = new Set<string>()
+        const toKey = (r: SearchResult) => `${r.document_id}:${r.chunk_index}:${r.content}`
+
+        for (const row of semanticRows) {
+          const key = toKey(row)
+          if (seen.has(key)) continue
+          seen.add(key)
+          merged.push(row)
+        }
+
+        let kwAdded = 0
+        for (const row of keywordRows) {
+          if (kwAdded >= hybridKeywordFloorTopK) break
+          const key = toKey(row)
+          if (seen.has(key)) continue
+          seen.add(key)
+          merged.push(row)
+          kwAdded += 1
+        }
+
+        return merged.map(r => ({ ...r, kb_id: kbId }))
+      })
       const allResults = await Promise.all(promises)
       let merged: SearchResult[] = allResults.flat().sort((a, b) => b.score - a.score)
 
@@ -36,7 +78,10 @@ export function useKBSearch() {
       }
 
       // Always enforce global topK ceiling after merging across KBs
-      const final = merged.slice(0, opts.topK)
+      const finalCap = opts.searchType === 'hybrid'
+        ? opts.topK + Math.max(1, Math.min(100, hybridKeywordFloorTopK))
+        : opts.topK
+      const final = merged.slice(0, finalCap)
       setResults(final)
       return final
     }

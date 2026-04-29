@@ -2,7 +2,7 @@ export interface SearchHistoryItem {
   id: string
   query: string
   kbIds: number[]
-  searchType: 'semantic' | 'keyword'
+  searchType: 'semantic' | 'keyword' | 'hybrid'
   topK: number
   rerank: boolean
   diversity: boolean
@@ -13,7 +13,7 @@ export interface SearchHistoryItem {
 
 export interface SearchOptions {
   kbIds: number[]
-  searchType: 'semantic' | 'keyword'
+  searchType: 'semantic' | 'keyword' | 'hybrid'
   topK: number
   rerank: boolean
   diversity: boolean

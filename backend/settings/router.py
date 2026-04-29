@@ -28,6 +28,7 @@ def _to_out(data: dict[str, str]) -> SettingsOut:
         embed_use_model_qps=data.get("embed_use_model_qps", "false") == "true",
         kb_index_max_workers=int(data.get("kb_index_max_workers", DEFAULTS["kb_index_max_workers"])),
         rag_top_k=int(data["rag_top_k"]),
+        hybrid_keyword_floor_top_k=int(data.get("hybrid_keyword_floor_top_k", DEFAULTS["hybrid_keyword_floor_top_k"])),
         default_embed_model_id=int(raw_embed_id) if raw_embed_id else None,
         pdf_parser=data["pdf_parser"],
         docx_parser=data["docx_parser"],
@@ -36,6 +37,11 @@ def _to_out(data: dict[str, str]) -> SettingsOut:
         info_extract_model_id=_to_int_or_none("info_extract_model_id"),
         doc_clean_keep_references=data.get("doc_clean_keep_references", "false") == "true",
         doc_clean_keep_annotations=data.get("doc_clean_keep_annotations", "false") == "true",
+        chat_citation_mode=data.get("chat_citation_mode", DEFAULTS["chat_citation_mode"]),
+        chat_citation_style=data.get("chat_citation_style", DEFAULTS["chat_citation_style"]),
+        chat_history_turns=int(data.get("chat_history_turns", DEFAULTS["chat_history_turns"])),
+        chat_max_tool_rounds=int(data.get("chat_max_tool_rounds", DEFAULTS["chat_max_tool_rounds"])),
+        chat_compress_model_id=_to_int_or_none("chat_compress_model_id"),
     )
 
 

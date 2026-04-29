@@ -9,9 +9,39 @@ Usage:
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 
 from fastapi import HTTPException
 from providers.models import AIModel
+
+
+def _post_rerank_with_retry(url: str, headers: dict, payload: dict):
+    """POST rerank request with conservative timeout and one retry.
+
+    External reranker endpoints can be unstable (TLS handshake timeout, 10054 reset).
+    Retrying once improves reliability while keeping latency bounded.
+    """
+    import requests
+
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            # (connect timeout, read timeout)
+            return requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=(8, 20),
+            )
+        except requests.exceptions.RequestException as exc:
+            last_exc = exc
+            if attempt == 0:
+                time.sleep(0.35)
+                continue
+            break
+
+    assert last_exc is not None
+    raise last_exc
 
 
 @dataclass
@@ -51,7 +81,6 @@ class _JinaReranker:
         self._base_url = (base_url or "https://api.jina.ai/v1").rstrip("/")
 
     def rerank(self, query: str, documents: list[str], top_n: int | None = None) -> list[RankedResult]:
-        import requests
         payload: dict = {
             "model": self._model,
             "query": query,
@@ -60,14 +89,13 @@ class _JinaReranker:
         if top_n is not None:
             payload["top_n"] = top_n
 
-        resp = requests.post(
+        resp = _post_rerank_with_retry(
             f"{self._base_url}/rerank",
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
             },
-            json=payload,
-            timeout=30,
+            payload=payload,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -96,7 +124,6 @@ class _OpenAICompatibleReranker:
         self._base_url = base_url.rstrip("/")
 
     def rerank(self, query: str, documents: list[str], top_n: int | None = None) -> list[RankedResult]:
-        import requests
         payload: dict = {
             "model": self._model,
             "query": query,
@@ -105,14 +132,13 @@ class _OpenAICompatibleReranker:
         if top_n is not None:
             payload["top_n"] = top_n
 
-        resp = requests.post(
+        resp = _post_rerank_with_retry(
             f"{self._base_url}/rerank",
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
             },
-            json=payload,
-            timeout=30,
+            payload=payload,
         )
         resp.raise_for_status()
         data = resp.json()

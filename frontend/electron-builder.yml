@@ -5,7 +5,12 @@ directories:
 files:
   - '!**/.vscode/*'
   - '!dist{,/**/*}'
-  - '!src/*'
+  - '!dist-clean/**'
+  - '!dist-staging-win/**'
+  - '!src/**'
+  - '!build/python-runtime/**'
+  - '!node_modules/**'
+  - '!scripts/**'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
@@ -44,6 +49,7 @@ nsis:
   installerIcon: icon.ico
   uninstallerIcon: icon.ico
   installerHeaderIcon: icon.ico
+  include: build/installer.nsh
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

@@ -68,6 +68,16 @@ with engine.connect() as conn:
         conn.commit()
 
 # ---------------------------------------------------------------------------
+# 简易迁移：为 messages 表补充 model_id 列（记录每条消息使用的模型）
+# ---------------------------------------------------------------------------
+with engine.connect() as conn:
+    from sqlalchemy import text, inspect as sa_inspect
+    msg_cols = [c["name"] for c in sa_inspect(engine).get_columns("messages")]
+    if "model_id" not in msg_cols:
+        conn.execute(text("ALTER TABLE messages ADD COLUMN model_id INTEGER REFERENCES ai_models(id) ON DELETE SET NULL"))
+        conn.commit()
+
+# ---------------------------------------------------------------------------
 # 首次启动自动写入预置供应商（仅当数据库中还没有任何 Provider 时执行）
 # ---------------------------------------------------------------------------
 _PROVIDERS_JSON = Path(__file__).resolve().parent.parent / "shared" / "providers.json"
@@ -76,27 +86,29 @@ _KNOWN_COMPROMISED_PRESET_KEYS = frozenset({
     "sk-bisxyxtfvgwdddldvhoevzxqasahghfkekkujchpifewzycn",
 })
 
+# Safety switch:
+# - Default: DO NOT auto-clear any existing provider api_key on startup.
+# - Set APP_CLEAR_COMPROMISED_PRESET_KEYS=1 to explicitly enable one-time cleanup.
+_CLEAR_COMPROMISED_PRESET_KEYS = os.environ.get("APP_CLEAR_COMPROMISED_PRESET_KEYS", "0") == "1"
+
 
 def _should_clear_seeded_api_key(existing: Provider, preset_api_key: str) -> bool:
     """Clear stale preset keys that were seeded by an older leaked preset file.
 
-    We only auto-clear when the current preset intentionally leaves api_key blank.
-    To avoid removing user-entered keys, we limit the cleanup to either:
-    1. known compromised leaked keys, or
-    2. untouched seed records whose timestamps never diverged after creation.
+    We only auto-clear when the current preset intentionally leaves api_key blank
+    and the stored key exactly matches a known compromised preset key.
+
+    Do not rely on timestamps here: in dev, quick user edits plus SQLite's coarse
+    timestamp precision can make legitimate user-entered keys look indistinguishable
+    from untouched seed rows.
     """
+    if not _CLEAR_COMPROMISED_PRESET_KEYS:
+        return False
+
     if preset_api_key or not existing.api_key:
         return False
 
-    if existing.api_key in _KNOWN_COMPROMISED_PRESET_KEYS:
-        return True
-
-    created_at = getattr(existing, "created_at", None)
-    updated_at = getattr(existing, "updated_at", None)
-    if created_at is None or updated_at is None:
-        return False
-
-    return abs((updated_at - created_at).total_seconds()) < 1
+    return existing.api_key in _KNOWN_COMPROMISED_PRESET_KEYS
 
 def _auto_seed() -> None:
     if not _PROVIDERS_JSON.exists():

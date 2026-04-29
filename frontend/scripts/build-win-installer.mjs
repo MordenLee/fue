@@ -42,7 +42,7 @@ runStep('npx', ['electron-builder', '--win', '--config.directories.output=dist-s
 mkdirSync(distDir, { recursive: true })
 
 const copied = []
-for (const fileName of ['fue-1.0.0-setup.exe', 'fue-1.0.0-setup.exe.blockmap', 'latest.yml']) {
+for (const fileName of ['fue-1.0.1-setup.exe', 'fue-1.0.1-setup.exe.blockmap', 'latest.yml']) {
   if (copyIfExists(join(stagingDir, fileName), join(distDir, fileName))) {
     copied.push(fileName)
   }
