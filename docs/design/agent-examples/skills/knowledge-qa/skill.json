@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "knowledge-qa",
+  "version": "1.0.0",
+  "name": "知识库问答",
+  "instructions_file": "SKILL.md",
+  "required_tools": ["knowledge.search"],
+  "required_resources": ["selected_knowledge_bases"],
+  "execution_policy": "bounded_retrieval",
+  "citation_policy": "verified_evidence_only"
+}
