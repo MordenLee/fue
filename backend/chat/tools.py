@@ -81,7 +81,7 @@ def _keyword_sort_key(text: str, terms: list[str]) -> tuple[int, int, int, int]:
     return (-distinct_hits, -total_hits, first_pos, len(text))
 
 
-def make_search_tool(kb_ids: list[int], db: Session, initial_cite_num: int = 1):
+def make_search_tool(kb_ids: list[int], db: Session, initial_cite_num: int = 1, *, raise_on_error: bool = False):
     """Create a knowledge-base search tool and a shared retrieved-chunks list.
 
     Parameters
@@ -110,11 +110,9 @@ def make_search_tool(kb_ids: list[int], db: Session, initial_cite_num: int = 1):
     ) -> str:
         """Search the knowledge base for document chunks relevant to the query.
 
-        Call this tool ONCE per user question with the most relevant query.
-        Include the [CITE-N] marker from each result immediately after
-        any statement that is based on that chunk.
-        After receiving the results, synthesize a complete answer — do NOT
-        call this tool again in the same turn.
+        Returns document excerpts with [CITE-N] source markers.
+        Task instructions and execution budgets are owned by the active agent
+        and skill, not by this retrieval implementation.
 
         Args:
             query: Natural-language query describing the information needed.
@@ -160,6 +158,8 @@ def make_search_tool(kb_ids: list[int], db: Session, initial_cite_num: int = 1):
                 try:
                     collection = client.get_collection(kb.collection_name)
                 except ValueError:
+                    if raise_on_error:
+                        raise
                     logger.warning("RAG: collection %s not in ChromaDB", kb.collection_name)
                     continue
 
@@ -216,6 +216,8 @@ def make_search_tool(kb_ids: list[int], db: Session, initial_cite_num: int = 1):
                         embedder = build_embedder(embed_model)
                         query_vec = embedder.embed_query(q)
                     except Exception as exc:
+                        if raise_on_error:
+                            raise
                         logger.warning("RAG: embedding failed for KB %d: %s", kb_id, exc)
                         return []
                     n = min(k, coll_size)
@@ -269,6 +271,8 @@ def make_search_tool(kb_ids: list[int], db: Session, initial_cite_num: int = 1):
                 raw_chunks.extend(kb_chunks)
 
             except Exception as exc:
+                if raise_on_error:
+                    raise
                 logger.warning("RAG: search failed for KB %d: %s", kb_id, exc)
                 continue
 

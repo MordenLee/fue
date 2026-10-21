@@ -36,6 +36,10 @@ from admin.router import router as admin_router
 from auxmodels.router import router as aux_router
 from conversations.router import router as conversations_router
 from folders.router import router as folders_router
+from agents.runtime import get_registry
+
+# Fail before serving chat requests if packaged agent/skill resources are invalid.
+get_registry()
 
 # 启动时自动建表（首次运行创建 app.db）
 Base.metadata.create_all(bind=engine)

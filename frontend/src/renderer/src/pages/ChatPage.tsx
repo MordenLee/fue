@@ -233,13 +233,7 @@ export function ChatPage() {
 
     const allMessages: ChatMessageType[] = []
     
-    // Default prompt for RAG to avoid hallucination
-    if (kbIds.length > 0) {
-      allMessages.push({ 
-        role: 'system', 
-        content: '你是一个知识库问答助手。请基于检索到的知识库内容来回答用户的问题，对检索结果进行分析、归纳和总结。只有在检索结果与问题完全无关时，才回答"根据已知信息无法回答该问题"。不要编造知识库中没有的信息。' 
-      })
-    }
+    // Agent role and active skill instructions are loaded by the backend.
 
     allMessages.push(
       ...messages.map((m) => ({ role: m.role, content: m.content })),
@@ -401,12 +395,6 @@ export function ChatPage() {
       })
       // Replace the content of the edited message
       const allMsgs: ChatMessageType[] = []
-      if (editKbIds.length > 0) {
-        allMsgs.push({
-          role: 'system',
-          content: '你是一个知识库问答助手。请基于检索到的知识库内容来回答用户的问题，对检索结果进行分析、归纳和总结。只有在检索结果与问题完全无关时，才回答"根据已知信息无法回答该问题"。不要编造知识库中没有的信息。'
-        })
-      }
       for (const m of updatedMessages) {
         if (m.id === msgId) {
           allMsgs.push({ role: m.role, content: newContent })
@@ -435,12 +423,6 @@ export function ChatPage() {
       // Build messages up to the one before this assistant message
       const historyMessages = messages.slice(0, msgIndex)
       const allMsgs: ChatMessageType[] = []
-      if (kbIds.length > 0) {
-        allMsgs.push({
-          role: 'system',
-          content: '你是一个知识库问答助手。请基于检索到的知识库内容来回答用户的问题，对检索结果进行分析、归纳和总结。只有在检索结果与问题完全无关时，才回答"根据已知信息无法回答该问题"。不要编造知识库中没有的信息。'
-        })
-      }
       allMsgs.push(...historyMessages.map(m => ({ role: m.role, content: m.content })))
       const existingRefs = historyMessages
         .filter(m => m.role === 'assistant' && m.references)

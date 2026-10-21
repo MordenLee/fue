@@ -26,6 +26,7 @@ extraResources:
       - '!**/__pycache__/**'
       - '!**/*.pyc'
       - '!.pytest_cache/**'
+      - '!tests/**'
   - from: build/python-runtime
     to: python
     filter:
