@@ -48,7 +48,7 @@ export function Select({ value, onValueChange, options, placeholder, label, disa
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal>
           <SelectPrimitive.Content
-            className="overflow-hidden rounded-lg border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-800 shadow-xl z-50"
+            className="min-w-[var(--radix-select-trigger-width)] max-w-[var(--radix-select-content-available-width)] overflow-hidden rounded-lg border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-800 shadow-xl z-50"
             position="popper"
             sideOffset={4}
           >
@@ -78,14 +78,14 @@ function SelectItem({ children, value }: { children: React.ReactNode; value: str
   return (
     <SelectPrimitive.Item
       value={value}
-      className="relative flex items-center rounded-md px-3 py-1.5 text-sm
+      className="relative flex items-center rounded-md pl-3 pr-10 py-1.5 text-sm
         text-neutral-800 dark:text-white
         cursor-pointer select-none hover:bg-neutral-100 dark:hover:bg-white/10
         focus:bg-neutral-100 dark:focus:bg-white/10 outline-none
         data-[disabled]:opacity-50 data-[disabled]:pointer-events-none"
     >
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-      <SelectPrimitive.ItemIndicator className="absolute right-2">
+      <SelectPrimitive.ItemIndicator className="absolute right-3 flex h-4 w-4 items-center justify-center">
         <Check className="h-4 w-4" />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>

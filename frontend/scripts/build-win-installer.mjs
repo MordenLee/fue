@@ -1,4 +1,4 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -7,6 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const frontendDir = resolve(__dirname, '..')
 const distDir = resolve(frontendDir, 'dist')
 const stagingDir = resolve(frontendDir, 'dist-staging-win')
+const { version } = JSON.parse(readFileSync(join(frontendDir, 'package.json'), 'utf8'))
 
 function runStep(command, args) {
   const result = spawnSync(command, args, {
@@ -42,7 +43,7 @@ runStep('npx', ['electron-builder', '--win', '--config.directories.output=dist-s
 mkdirSync(distDir, { recursive: true })
 
 const copied = []
-for (const fileName of ['fue-1.0.1-setup.exe', 'fue-1.0.1-setup.exe.blockmap', 'latest.yml']) {
+for (const fileName of [`fue-${version}-setup.exe`, `fue-${version}-setup.exe.blockmap`, 'latest.yml']) {
   if (copyIfExists(join(stagingDir, fileName), join(distDir, fileName))) {
     copied.push(fileName)
   }

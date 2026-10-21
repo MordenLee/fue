@@ -20,13 +20,16 @@ extraResources:
     to: backend
     filter:
       - '**/*'
-      - '!app.db'
+      - '!app.db*'
       - '!chroma_data/**'
       - '!venv/**'
       - '!**/__pycache__/**'
       - '!**/*.pyc'
       - '!.pytest_cache/**'
       - '!tests/**'
+      - '!logs/**'
+      - '!**/*.log'
+      - '!.env*'
   - from: build/python-runtime
     to: python
     filter:
