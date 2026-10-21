@@ -43,8 +43,8 @@ class UsageLedger:
         cap = min(self.per_output or 4096, remaining) if remaining is not None else self.per_output
         return estimated, cap, time.monotonic()
 
-    def _finish(self, estimated, started, response, status, category, model_id):
-        usage = getattr(response, "usage_metadata", None) if response is not None else None
+    def _finish(self, estimated, started, response, status, category, model_id, usage_override=None):
+        usage = usage_override or (getattr(response, "usage_metadata", None) if response is not None else None)
         if not usage and response is not None:
             raw = (getattr(response, "response_metadata", None) or {}).get("token_usage")
             if raw:
@@ -78,8 +78,25 @@ class UsageLedger:
         response, status = None, "failed"
         bounded = self.bounded(model, cap)
         gen = bounded.astream(messages)
+        base = model
+        while getattr(base, "bound", None) is not None:
+            base = base.bound
+        # OpenAI-compatible endpoints can send cumulative usage on every chunk.
+        # AIMessageChunk addition sums metadata, which would multiply these counts.
+        cumulative_usage = type(base).__module__.startswith("langchain_openai")
+        snapshot = None
+        def merge_snapshot(old, new):
+            result = dict(old or {})
+            for key, value in new.items():
+                if isinstance(value, dict):
+                    result[key] = merge_snapshot(result.get(key), value)
+                elif isinstance(value, (int, float)):
+                    result[key] = max(result.get(key, 0), value)
+            return result
         try:
             async for chunk in gen:
+                if cumulative_usage and getattr(chunk, "usage_metadata", None):
+                    snapshot = merge_snapshot(snapshot, chunk.usage_metadata)
                 response = chunk if response is None else response + chunk
                 yield chunk
             status = "completed"
@@ -90,4 +107,4 @@ class UsageLedger:
             try:
                 await gen.aclose()
             finally:
-                self._finish(estimated, started, response, status, "answer", model_id)
+                self._finish(estimated, started, response, status, "answer", model_id, snapshot)

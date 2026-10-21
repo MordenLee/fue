@@ -111,6 +111,8 @@ class WorkingContextTests(unittest.IsolatedAsyncioTestCase):
         events = await self.plan(fixture)
         self.assertIn('compaction_completed', [e['type'] for e in events])
         self.assertEqual(len(fixture.calls), 1)
+        payload = json.loads(fixture.calls[0][-1].content)
+        self.assertEqual([m['role'] for m in payload['new_pairs'][0]['messages']], ['user', 'assistant'])
         with self.factory() as db:
             head = db.query(ContextSummary).filter_by(active=True).one()
             self.assertLessEqual(len(head.markdown), 1200)
@@ -273,6 +275,19 @@ class WorkingContextTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.embed_query.call_count,1)
         self.assertEqual(ledger.records[0]['category'],'embedding')
         self.assertIsNone(ledger.records[0]['usage'])
+
+    async def test_openai_cumulative_stream_usage_is_not_summed_per_chunk(self):
+        class Cumulative(ProviderFixture):
+            async def astream(self,messages):
+                for n in (1,2,3):
+                    yield AIMessageChunk(content='x',usage_metadata={'input_tokens':100,'output_tokens':n,'total_tokens':100+n})
+        Cumulative.__module__='langchain_openai.synthetic'
+        ledger=UsageLedger(input_limit=200)
+        chunks=[c async for c in ledger.stream(Cumulative(),[HumanMessage(content='hello')])]
+        self.assertEqual(len(chunks),3)
+        self.assertEqual(ledger.input_used,100)
+        self.assertEqual(ledger.output_used,3)
+        self.assertEqual(ledger.records[0]['usage']['total_tokens'],103)
 
     async def test_all_four_http_paths_prepare_working_context_and_store_usage(self):
         from knowledge.models import KnowledgeBase

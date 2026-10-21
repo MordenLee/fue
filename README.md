@@ -6,7 +6,9 @@ FUE 是一个基于 Electron、React、TypeScript 和 FastAPI 的桌面 AI 工�
 
 当前正式版为 **v1.0.11**。下载请前往 [GitHub Releases](https://github.com/MordenLee/fue/releases/tag/v1.0.11)，更新与当前限制见 [发布说明](docs/releases/1.0.11.md)。
 
-架构文档：[当前聊天记忆与 MCP](docs/design/conversation-memory.md)、[长对话工作记忆 v2 设计](docs/design/working-context.md)、[v2 实施清单](docs/plans/working-context-v2.md)。v2 已部分接入本地开发代码，默认关闭，尚未发布到 1.0.11 安装包；启用与验证范围见 [开发说明](docs/validation/working-context-2026-10-21.md)。
+本次 1.0.11 同版本更新增加记忆管理：材料处理状态、限长 summary.md、压缩记录、精确回读及用量展示；工作记忆默认关闭，需在对话设置中启用。请重新下载安装包获取更新。
+
+架构文档：[当前聊天记忆与 MCP](docs/design/conversation-memory.md)、[长对话工作记忆 v2 设计](docs/design/working-context.md)、[v2 实施清单](docs/plans/working-context-v2.md)。具体启用、真实模型验证与已知限制见 [记忆管理说明](docs/validation/working-context-2026-10-21.md)。
 
 现有功能包括：
 
@@ -15,7 +17,7 @@ FUE 是一个基于 Electron、React、TypeScript 和 FastAPI 的桌面 AI 工�
 - 知识库文档管理、检索增强问答与引用展示。
 - 中英文界面、明暗主题及相关设置。
 
-本版新增可配置的 Agent/Skill 执行体系、聊天问答对记忆索引、历史检索与相邻上下文阅读，并修复设置选项的勾选图标排版。写作编辑器为现有原型；以下方向中部分基础能力已实现，多人协作、完整过程展示、费用预算与自动长对话压缩仍待完善。
+本版新增可配置的 Agent/Skill 执行体系、聊天问答对记忆索引、历史检索与相邻上下文阅读，并修复设置选项的勾选图标排版。同版本补充了工作记忆与按需压缩。写作编辑器为现有原型；多人协作、完整运行恢复、精确费用估算与多级压缩仍待完善。
 
 ## 后续开发方向
 

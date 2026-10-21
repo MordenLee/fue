@@ -2,7 +2,7 @@
 
 2026-10-21，本文描述 1.0.11 已实现的原文保存、问答索引与 MCP 翻阅。保存完整对话，检索单位是问答对；摘要不是记忆原本。
 
-下一阶段的长对话架构见 [工作记忆与上下文压缩 v2](working-context.md)，实施清单见 [working-context-v2.md](../plans/working-context-v2.md)。这些能力已部分接入本地开发代码，启用步骤及差距见 [开发实现与验证](../validation/working-context-2026-10-21.md)，尚未发布到 1.0.11 安装包。
+长对话架构见 [工作记忆与上下文压缩 v2](working-context.md)，实施清单见 [working-context-v2.md](../plans/working-context-v2.md)。部分能力已纳入 1.0.11 同版本更新，启用步骤、真实验证及差距见 [实现与验证](../validation/working-context-2026-10-21.md)。
 
 ## 当前上下文能力与边界
 

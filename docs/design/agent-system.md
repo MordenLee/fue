@@ -6,7 +6,7 @@
 
 后续实现更新：完整聊天记忆、问答索引、修订日志及 MCP 翻阅已落地，具体语义以 [conversation-memory.md](conversation-memory.md) 为准。本文件中“只保存提炼结论”或首期单轮检索的旧假设不适用于当前实现。
 
-v2 架构更新：采用 [工作记忆与上下文压缩](working-context.md) 的 ContextPlanner、材料生命周期、每会话 summary.md、持久压缩事件与精确回读；已部分接入本地开发代码，范围见 [验证说明](../validation/working-context-2026-10-21.md) 和 [实施清单](../plans/working-context-v2.md)。本文后续目录与流程保留为 v1 设计背景，与 v2 冲突时以 v2 目标设计为准；开发版工作记忆仍需显式启用。
+v2 架构更新：采用 [工作记忆与上下文压缩](working-context.md) 的 ContextPlanner、材料生命周期、每会话 summary.md、持久压缩事件与精确回读；部分能力纳入 1.0.11 同版本更新，范围见 [验证说明](../validation/working-context-2026-10-21.md) 和 [实施清单](../plans/working-context-v2.md)。本文后续目录与流程保留为 v1 设计背景，与 v2 冲突时以 v2 目标设计为准；工作记忆仍需显式启用。
 
 ## 1. 核心决定
 

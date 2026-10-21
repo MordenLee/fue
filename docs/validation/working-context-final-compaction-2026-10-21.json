@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "model": "Pro/deepseek-ai/DeepSeek-V3.2",
+  "synthetic_only": true,
+  "prepare_only": true,
+  "candidate_chars": 619,
+  "candidate_items": 5,
+  "summary_chars": 619,
+  "summary": "根据预设标准系统性地筛选学术文献。\n筛选标准：仅纳入2020年及以后的中国制造业企业实证研究；排除综述类文献；最终纳入数量上限为8篇。所有标准在后续核对中均被用户确认保持不变。\n已对七份材料（ID：1-7）进行评估，助手声称它们均已被评估，但用户仅确认了标准本身，未确认任何材料符合标准。评估结果：所有七份材料均暂未纳入。\n当前进度：已按标准评估七份材料，结果均为‘暂未采用’。未决事项：需明确‘暂未采用’的具体原因，并继续评估后续材料直至达到8篇纳入上限。\n历史记录索引：用户指令(id:7b)设定了筛选标准，并在后续所有交流(id:81,55,6f,1e,dc,5d)中反复确认继续使用该原始标准。助手对所有材料的评估状态均有报告。",
+  "usage": [
+    {
+      "category": "compaction",
+      "status": "completed",
+      "input_estimated": 5158,
+      "output_estimated": 557,
+      "usage": {
+        "input_tokens": 2686,
+        "output_tokens": 458,
+        "total_tokens": 3144,
+        "input_token_details": {
+          "cache_read": 0
+        },
+        "output_token_details": {
+          "reasoning": 0
+        }
+      },
+      "elapsed_ms": 27074
+    }
+  ],
+  "summary_ok": true,
+  "reuse_without_model_call": true,
+  "tools": [],
+  "successful_tools": [],
+  "answer": null,
+  "errors": [],
+  "elapsed_seconds": 31.52
+}

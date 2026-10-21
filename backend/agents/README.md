@@ -2,7 +2,7 @@
 
 2026-10-21 更新：已实现完整问答记忆、MCP 搜索/上下文阅读、两类检索模式与同步删除，当前行为见 [聊天记忆实现说明](../../docs/design/conversation-memory.md)。下文中的 evidence_synthesis 为可选兼容模式；当前默认 iterative_evidence 支持多轮搜索与阅读。
 
-下一阶段目标架构见 [长对话工作记忆与上下文压缩 v2](../../docs/design/working-context.md)，任务见 [实施清单](../../docs/plans/working-context-v2.md)。已在本地开发版接入材料状态、按需 summary.md、持久压缩事件及 read_memory，默认关闭且未发布；具体用法和限制见 [开发实现与验证](../../docs/validation/working-context-2026-10-21.md)。
+目标架构见 [长对话工作记忆与上下文压缩 v2](../../docs/design/working-context.md)，任务见 [实施清单](../../docs/plans/working-context-v2.md)。1.0.11 同版本更新接入材料状态、按需 summary.md、持久压缩事件及 read_memory，新模式默认关闭；具体用法和真实模型验证见 [实现与验证](../../docs/validation/working-context-2026-10-21.md)。
 
 当前真实调用链：
 
