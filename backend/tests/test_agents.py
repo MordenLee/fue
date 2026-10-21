@@ -26,7 +26,7 @@ from agents.context import ContextLimitError, build_context
 from agents.registry import AgentRegistry
 from agents.runner import AgentRunner
 from agents.runtime import get_registry
-from agents.tools import SearchArguments, ToolBinding, make_knowledge_binding, TOOL_IDS
+from agents.tools import SearchArguments, ReadArguments, ToolBinding, make_knowledge_binding, TOOL_IDS
 from chat import router as api
 
 
@@ -180,7 +180,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                 build_context(agent, [api.ChatMessage(role="user", content="topic")]), streaming=streaming)]
             tool.execute.assert_awaited_once_with({"query": "topic", "mode": "vector", "top_n": 0, "kb_ids": None})
             self.assertIn("知识库问答", model.inputs[0][0].content)
-            self.assertIn("Verified excerpt", model.inputs[1][-2].content)
+            self.assertIn("Verified excerpt", model.inputs[1][-1].content)
             self.assertEqual(events[-1].data, "Answer [CITE-1]")
 
     async def test_unregistered_model_tool_is_never_executed(self):
@@ -197,7 +197,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         model = FakeModel([tool_response(), AIMessage(content="检索失败")])
         events = [e async for e in AgentRunner(agent, model, [tool]).events(
             build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
-        self.assertIn('"status": "error"', model.inputs[-1][-2].content)
+        self.assertIn('"status": "error"', model.inputs[-1][-1].content)
         self.assertEqual(events[-1].data, "检索失败")
 
     async def test_native_loop_caps_model_calls_and_reuses_tool_result(self):
@@ -214,7 +214,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         agent = search_agent()
         tool = binding(AsyncMock(return_value="x" * 20000))
         model = FakeModel([tool_response(), AIMessage(content="bounded answer")])
-        events = [e async for e in AgentRunner(agent, model, [tool], context_length=5).events(
+        events = [e async for e in AgentRunner(agent, model, [tool], context_length=8).events(
             build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
         self.assertEqual(events[-1].data, "bounded answer")
         self.assertLess(sum(len(str(m.content)) for m in model.inputs[-1]), 9000)
@@ -244,7 +244,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         _ = [e async for e in AgentRunner(agent, model, [tool]).events(
             build_context(agent, [api.ChatMessage(role="user", content="question")]), streaming=False)]
         tool.execute.assert_awaited_once_with({"query": "question", "mode": "vector", "top_n": 0, "kb_ids": None})
-        self.assertIn("Verified excerpt", model.inputs[0][-2].content)
+        self.assertIn("Verified excerpt", model.inputs[0][-1].content)
 
     async def test_invalid_tool_arguments_never_reach_implementation(self):
         agent = search_agent()
@@ -255,7 +255,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         _ = [e async for e in AgentRunner(agent, model, [tool]).events(
             build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
         tool.execute.assert_not_awaited()
-        self.assertIn('"status": "error"', model.inputs[-1][-2].content)
+        self.assertIn('"status": "error"', model.inputs[-1][-1].content)
 
     async def test_execution_budget_forces_last_call_without_tools(self):
         base = search_agent()
@@ -277,10 +277,44 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         events = [e async for e in AgentRunner(agent, model, [tool]).events(
             build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
         self.assertEqual(events[-1].data, "bounded final answer")
-        block = model.inputs[-1][-2].content
+        block = model.inputs[-1][-1].content
         self.assertLessEqual(len(block), 2100)
         self.assertIn('"truncated": true', block)
         tool.execute.assert_awaited_once()
+
+    async def test_search_catalog_cannot_consume_reserved_reading_budget(self):
+        base = search_agent()
+        agent = replace(base, tool_ids=frozenset({"knowledge.search", "sources.read"}))
+        search = binding(AsyncMock(return_value="catalog " * 10000))
+        read_execute = AsyncMock(return_value="actual adjacent context")
+        read = ToolBinding("sources.read", StructuredTool.from_function(
+            name="read_context", description="Read context", args_schema=ReadArguments, coroutine=read_execute), read_execute)
+        read_call = AIMessage(content="", tool_calls=[{"name": "read_context", "id": "read-1",
+                                                      "args": {"source": "chat", "pair_id": "test"}}])
+        model = FakeModel([tool_response(), read_call, AIMessage(content="read complete")])
+        events = [e async for e in AgentRunner(agent, model, [search, read]).events(
+            build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
+        self.assertEqual(events[-1].data, "read complete")
+        read_execute.assert_awaited_once()
+        self.assertEqual([t.name for t in model.bindings[-1]], ["read_context"])
+        self.assertIn('"name": "read_context", "status": "ok"', model.inputs[-1][-1].content)
+
+    async def test_duplicate_search_is_cached_then_reader_remains_available(self):
+        base = search_agent()
+        agent = replace(base, tool_ids=frozenset({"knowledge.search", "sources.read"}))
+        search = binding()
+        execute = AsyncMock(return_value="neighbor context")
+        reader = ToolBinding("sources.read", StructuredTool.from_function(
+            name="read_context", description="Read", args_schema=ReadArguments, coroutine=execute), execute)
+        read_call = AIMessage(content="", tool_calls=[{"name": "read_context", "id": "read-1",
+                                                      "args": {"source": "chat", "pair_id": "test"}}])
+        model = FakeModel([tool_response(), tool_response(), read_call, AIMessage(content="done")])
+        _ = [e async for e in AgentRunner(agent, model, [search, reader]).events(
+            build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
+        search.execute.assert_awaited_once()
+        execute.assert_awaited_once()
+        self.assertEqual([t.name for t in model.bindings[-1]], ["read_context"])
+        self.assertTrue(model.inputs[-1][-1].content.startswith("<execution-receipts>"))
 
 
 class RouteTests(unittest.IsolatedAsyncioTestCase):

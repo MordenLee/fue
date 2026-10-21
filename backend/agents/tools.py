@@ -62,7 +62,7 @@ def make_knowledge_binding(kb_ids: list[int], retrieved: list, session_factory, 
                 keyword_only = setting(db, "knowledge_query_mode") == "keyword"
                 if keyword_only:
                     validated["mode"] = "keyword"
-                validated["top_n"] = min(validated["top_n"] or 5, 8)
+                validated["top_n"] = min(validated["top_n"] or 3, 8)
                 options = {"raise_on_error": True}
                 if keyword_only:
                     options["allow_rerank"] = False
@@ -74,7 +74,7 @@ def make_knowledge_binding(kb_ids: list[int], retrieved: list, session_factory, 
                 # Search returns a catalog of hits. Full/neighboring text is read separately.
                 catalog = {"results": [{"source": c.cite_label, "document_id": c.document_file_id,
                                         "kb_id": c.knowledge_base_id, "chunk_index": c.chunk_index,
-                                        "filename": c.original_filename, "preview": c.content[:500]}
+                                        "filename": c.original_filename, "preview": c.content[:350]}
                                        for c in chunks]}
                 return json.dumps(catalog, ensure_ascii=False), chunks
 

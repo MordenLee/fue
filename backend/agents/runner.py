@@ -67,7 +67,12 @@ class AgentRunner:
         self.result_budget = min(limits.max_tool_result_chars,
                                  max(0, int(self.context_length * 1000 * 0.8) - base_chars - 2048)
                                  if self.context_length else limits.max_tool_result_chars)
+        # Reserve envelope/receipt space as well; raw result text cannot consume it.
+        self.result_budget = self.result_budget * 3 // 4
         self.used_result_chars = 0
+        self.used_search_chars = 0
+        self.has_reader = any(t.id == "sources.read" for t in self.tools.values())
+        self.blocked_tool_names = set()
         tools_enabled = bool(self.tools)
         calls, cache, evidence = 0, {}, []
         from memory import service as memory_service
@@ -98,11 +103,20 @@ class AgentRunner:
                 cache.clear()
                 working = list(base)
                 self.used_result_chars = 0
+                self.used_search_chars = 0
+                self.blocked_tool_names.clear()
                 deletion_epoch = memory_service.DELETION_EPOCH
             # Always reserve the last model call for an answer without tools.
             may_use_tools = (tools_enabled and calls < self.tool_budget and model_index < limits.max_model_calls - 1
                              and self.result_budget - self.used_result_chars > 512)
-            model = bound if may_use_tools else self.llm
+            available = [t.schema for t in self.tools.values() if t.schema.name not in self.blocked_tool_names and
+                         not (self.has_reader and t.id.endswith(".search") and self.used_search_chars >= self.result_budget // 2 - 256)]
+            if may_use_tools and available and len(available) != len(self.tools):
+                model = self.llm.bind_tools(available)
+            elif may_use_tools and not available:
+                may_use_tools, model = False, self.llm
+            else:
+                model = bound if may_use_tools else self.llm
             check_context(working, self.context_length)
             response = None
             if streaming:
@@ -166,21 +180,30 @@ class AgentRunner:
             yield AgentEvent("tool_result", result)
             return
         key = (tool.id, json.dumps(args, sort_keys=True, ensure_ascii=False))
+        cached = key in cache
+        if cached and self.has_reader:
+            # A repeated identical request is not progress. Keep readers available
+            # rather than spending the remaining turns replaying the same search.
+            self.blocked_tool_names.add(tool.schema.name)
         if key not in cache:
             try:
+                if self.has_reader and tool.id.endswith(".search") and self.used_search_chars >= self.result_budget // 2 - 256:
+                    raise ValueError("Search preview budget exhausted; use read_context on existing hits")
                 async with asyncio.timeout(self.agent.definition.limits.tool_timeout_seconds):
                     from memory.mcp import call_in_process
                     output = await call_in_process(tool, args)
                 result = output if isinstance(output, ToolOutput) else ToolOutput(output)
                 text = result.content
                 cap = self.agent.definition.limits.max_tool_result_chars
-                cache[key] = {"call_id": call_id, "tool": tool.id, "status": result.status,
+                cache[key] = {"call_id": call_id, "tool": tool.id, "name": tool.schema.name, "status": result.status,
                               "content": text[:cap], "truncated": len(text) > cap}
             except Exception as exc:
-                cache[key] = {"call_id": call_id, "tool": tool.id, "status": "error",
+                cache[key] = {"call_id": call_id, "tool": tool.id, "name": tool.schema.name, "status": "error",
                               "content": f"Tool execution failed: {exc}"}
-        result = {**cache[key], "call_id": call_id}
+        result = {**cache[key], "call_id": call_id, "cached": cached}
         room = max(0, self.result_budget - self.used_result_chars - 256)
+        if self.has_reader and tool.id.endswith(".search"):
+            room = min(room, max(0, self.result_budget // 2 - self.used_search_chars - 128))
         original = str(result.get("content", ""))
         # JSON escaping is included in the budget. Binary search avoids quadratic slicing.
         lo, hi = 0, min(len(original), room)
@@ -195,10 +218,16 @@ class AgentRunner:
         if not lo:
             result["content"] = "Result omitted: retrieval budget exhausted."
         self.used_result_chars += len(json.dumps(result, ensure_ascii=False)) + 2
+        if tool.id.endswith(".search"):
+            self.used_search_chars += len(json.dumps(result, ensure_ascii=False)) + 2
         yield AgentEvent("tool_result", result)
 
     @staticmethod
     def _evidence_context(base, evidence):
         # This envelope is data, not an additional system instruction.
-        block = HumanMessage(content="<tool-results>\n" + json.dumps(evidence, ensure_ascii=False) + "\n</tool-results>")
-        return [*base[:-1], block, base[-1]]
+        receipts = [{"name": e.get("name", e.get("tool")), "status": e.get("status")} for e in evidence]
+        block = HumanMessage(content="<execution-receipts>" + json.dumps(receipts, ensure_ascii=False) +
+                             "</execution-receipts>\n<tool-results>\n" + json.dumps(evidence, ensure_ascii=False) + "\n</tool-results>")
+        # Observations follow the question, so the last user instruction does not
+        # restart the plan from step one on every compatibility-mode iteration.
+        return [*base, block]

@@ -21,7 +21,7 @@ from database import SessionLocal
 from providers.models import Provider
 
 
-async def check(model_id, kb_id, *, rag, secrets, session_factory=SessionLocal, synthetic=False):
+async def check(model_id, kb_id, *, rag, secrets, session_factory=SessionLocal, synthetic=False, require_context=False):
     question = (
         "请检索所选知识库，根据资料说明贸易引力模型的用途，给出两点并标注引用。控制在150字以内。"
         if rag else "这是FUE Agent真实提供商连通性测试。请只回复：FUE真实模型连接成功。"
@@ -29,6 +29,14 @@ async def check(model_id, kb_id, *, rag, secrets, session_factory=SessionLocal, 
     if rag and synthetic:
         question = ("请调用 search_knowledge_base，必须使用 mode=keyword、query=FUE_AGENT_SMOKE，"
                     "查找测试文档中的验证口令。只回复口令，并附资料引用。不要使用 vector 检索。")
+    if rag and require_context:
+        question = (
+            "Call search_knowledge_base exactly once: query='贸易引力模型', mode='vector', top_n=1. "
+            "Then immediately call read_context with source='knowledge', the returned document_id/chunk_index, "
+            "before=1, after=1, length=2500. Do not replace reading with repeated searches. "
+            "Briefly explain the model's use in Chinese with a source citation. "
+            "State honestly if the execution receipts do not contain a successful read_context."
+        )
     payload = (RAGChatRequest(kb_ids=[kb_id], messages=[ChatMessage(role="user", content=question)])
                if rag else ChatRequest(messages=[ChatMessage(role="user", content=question)]))
     started = time.monotonic()
@@ -62,6 +70,8 @@ async def check(model_id, kb_id, *, rag, secrets, session_factory=SessionLocal, 
         report["passed"] = bool(done and final and not errors and (not rag or (tool_calls and refs)))
         if rag and synthetic:
             report["passed"] = report["passed"] and "ORCHID-742" in final
+        if rag and require_context:
+            report["passed"] = report["passed"] and any(t["name"] == "read_context" for t in tool_calls)
     except Exception as exc:
         report.update({"passed": False, "error_type": type(exc).__name__, "error": str(exc)})
     report["seconds"] = round(time.monotonic() - started, 2)
@@ -133,6 +143,7 @@ async def main():
     parser.add_argument("--model-id", type=int, required=True)
     parser.add_argument("--kb-id", type=int, help="Existing KB; requires explicit authorization to send its excerpts")
     parser.add_argument("--synthetic", action="store_true", help="Use invented evidence and isolated storage")
+    parser.add_argument("--read-context", action="store_true", help="Require actual neighboring-chunk reading in the live KB test")
     args = parser.parse_args()
     # Suppress vendor request diagnostics; print only the scrubbed summary.
     logging.disable(logging.CRITICAL)
@@ -145,7 +156,7 @@ async def main():
     plain = await check(args.model_id, args.kb_id, rag=False, secrets=secrets)
     if not plain:
         return 1
-    rag = await check(args.model_id, args.kb_id, rag=True, secrets=secrets)
+    rag = await check(args.model_id, args.kb_id, rag=True, secrets=secrets, require_context=args.read_context)
     return 0 if plain and rag else 1
 
 
