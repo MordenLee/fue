@@ -4,7 +4,7 @@ FUE 是一个基于 Electron、React、TypeScript 和 FastAPI 的桌面 AI 工�
 
 ## 当前版本
 
-当前代码基线为 **v1.0.1**，对应 2026 年 4 月 29 日的提交 [`13de84b`](https://github.com/MordenLee/fue/commit/13de84b504e09147138e55c0edeeb1902529195b)，是本仓库提交记录中 2026 年 9 月之前的最新版本。
+当前代码基线为 **v1.0.1**，对应 2026 年 4 月 29 日的提交 [`13de84b`](https://github.com/MordenLee/fue/commit/13de84b504e09147138e55c0edeeb1902529195b)，为当前的稳定版本。新版本仍在开发中。
 
 现有功能包括：
 
