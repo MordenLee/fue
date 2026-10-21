@@ -23,6 +23,13 @@ def _to_out(data: dict[str, str]) -> SettingsOut:
         return int(v) if v else None
 
     return SettingsOut(
+        chat_context_mode=data["chat_context_mode"],
+        chat_input_tokens=int(data["chat_input_tokens"]),
+        chat_output_tokens=int(data["chat_output_tokens"]),
+        chat_run_input_tokens=int(data["chat_run_input_tokens"]),
+        chat_run_output_tokens=int(data["chat_run_output_tokens"]),
+        chat_summary_chars=int(data["chat_summary_chars"]),
+        chat_summary_tokens=int(data["chat_summary_tokens"]),
         language=data["language"],
         memory_query_scope=data["memory_query_scope"],
         memory_query_mode=data["memory_query_mode"],
@@ -64,6 +71,8 @@ def update_settings(payload: SettingsUpdate, db: Session = Depends(get_db)):
     updates = payload.model_dump(exclude_unset=True)
 
     for key, value in updates.items():
+        if key in {'chat_output_tokens', 'chat_run_output_tokens', 'chat_summary_tokens', 'chat_summary_chars', 'chat_context_mode', 'chat_run_input_tokens', 'chat_input_tokens'} and value is None:
+            raise HTTPException(status_code=400, detail=f"{key} cannot be null")
         if key in {"memory_query_scope", "memory_query_mode", "knowledge_query_mode"} and value is None:
             raise HTTPException(status_code=400, detail=f"{key} cannot be null")
         # settings table stores everything as plain strings

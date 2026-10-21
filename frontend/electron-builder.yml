@@ -22,6 +22,7 @@ extraResources:
       - '**/*'
       - '!app.db*'
       - '!chroma_data/**'
+      - '!working_memory/**'
       - '!venv/**'
       - '!**/__pycache__/**'
       - '!**/*.pyc'

@@ -158,6 +158,22 @@ export function SettingsPage() {
                   />
                 </FormField>
 
+                <FormField label={t('working.mode')} description={t('working.mode_hint')}>
+                  <Select value={current.chat_context_mode ?? 'legacy'}
+                    onValueChange={v => handleChange({ chat_context_mode: v as 'legacy' | 'working' })}
+                    options={['legacy', 'working'].map(value => ({ value, label: t(`working.mode_${value}`) }))} />
+                </FormField>
+                {current.chat_context_mode === 'working' && <div className="space-y-4">
+                  <p className="text-xs text-amber-600 dark:text-amber-400">{t('working.cost_hint')}</p>
+                  {(['chat_input_tokens', 'chat_output_tokens', 'chat_run_input_tokens', 'chat_run_output_tokens', 'chat_summary_chars', 'chat_summary_tokens'] as const).map(key => (
+                    <FormField key={key} label={t(`working.${key}`)}>
+                      <NumberInput className="w-36" value={current[key] ?? 2000}
+                        min={key.includes('summary') ? 256 : key.includes('input') ? 1024 : 128}
+                        max={key === 'chat_summary_chars' ? 10000 : key.includes('input') ? 1000000 : 32000}
+                        onChange={v => handleChange({ [key]: v })} />
+                    </FormField>
+                  ))}
+                </div>}
                 <FormField label={t('settings_page.chat_history_turns')} description={t('settings_page.chat_history_turns_desc')}>
                   <NumberInput
                     className="w-28"

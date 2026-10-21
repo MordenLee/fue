@@ -6,6 +6,8 @@ export interface ChatMessage {
 }
 
 export interface ChatResponse {
+  run_id?: string
+  activity?: ActivityEvent[]
   content: string
   model: string
   provider: string
@@ -17,6 +19,7 @@ export interface RAGChatResponse extends ChatResponse {
 }
 
 export type SSEEvent =
+  | { type: 'activity'; data: ActivityEvent }
   | { type: 'token'; data: string }
   | { type: 'tool_call'; data: { name: string; args: Record<string, unknown> } }
   | { type: 'citations'; data: { references: ReferenceItem[]; cite_map: Record<string, string> } }
@@ -27,6 +30,22 @@ export type SSEEvent =
   | { type: 'clear' }
   | { type: 'replace'; data: string }
   | { type: 'done' }
+
+export interface ActivityEvent {
+  type: string
+  id?: string
+  run_id?: string
+  name?: string
+  step?: number
+  count?: number
+  status?: string
+  category?: string
+  input_estimated?: number
+  output_estimated?: number
+  input_limit?: number
+  elapsed_ms?: number
+  usage?: { input_tokens?: number; output_tokens?: number } | null
+}
 
 export interface StreamRAGOptions {
   kb_ids: number[]

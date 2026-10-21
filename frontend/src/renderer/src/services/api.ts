@@ -116,6 +116,8 @@ export function streamRequest(
         if (raw === '[DONE]') {
           sawDone = true
           onEvent({ type: 'done' })
+        } else if (raw.startsWith('[ACTIVITY] ')) {
+          try { onEvent({ type: 'activity', data: JSON.parse(raw.slice(11)) }) } catch { /* ignore parse error */ }
         } else if (raw.startsWith('[SEARCHING] ')) {
           try { onEvent({ type: 'searching', data: JSON.parse(raw.slice(12)) }) } catch { /* ignore parse error */ }
         } else if (raw.startsWith('[TOOL_CALL] ')) {

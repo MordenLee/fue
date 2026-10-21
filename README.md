@@ -6,6 +6,8 @@ FUE 是一个基于 Electron、React、TypeScript 和 FastAPI 的桌面 AI 工�
 
 当前正式版为 **v1.0.11**。下载请前往 [GitHub Releases](https://github.com/MordenLee/fue/releases/tag/v1.0.11)，更新与当前限制见 [发布说明](docs/releases/1.0.11.md)。
 
+架构文档：[当前聊天记忆与 MCP](docs/design/conversation-memory.md)、[长对话工作记忆 v2 设计](docs/design/working-context.md)、[v2 实施清单](docs/plans/working-context-v2.md)。v2 已部分接入本地开发代码，默认关闭，尚未发布到 1.0.11 安装包；启用与验证范围见 [开发说明](docs/validation/working-context-2026-10-21.md)。
+
 现有功能包括：
 
 - AI 对话、流式输出与会话管理。

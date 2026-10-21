@@ -14,7 +14,7 @@ if (presets.some((provider) => provider.api_key?.trim())) {
 // Check the actual packaging rules instead of requiring deletion of local keys.
 const config = yaml.load(readFileSync(resolve(scriptDir, '../electron-builder.yml'), 'utf8'))
 const backend = config.extraResources?.find((resource) => resource.from === '../backend')
-const required = ['!app.db*', '!chroma_data/**', '!logs/**', '!.env*']
+const required = ['!app.db*', '!chroma_data/**', '!working_memory/**', '!logs/**', '!.env*']
 if (!backend || required.some((rule) => !backend.filter?.includes(rule))) {
   throw new Error('Backend packaging must exclude databases, vector data, logs and environment files.')
 }

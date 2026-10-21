@@ -1,15 +1,29 @@
 {
   "schema_version": 1,
   "id": "chat",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "FUE Chat",
   "prompt_file": "prompts/chat.md",
   "skills": [
-    { "id": "knowledge-qa", "activate_when": "has_selected_knowledge_bases" },
-    { "id": "chat-memory", "activate_when": "history_enabled" },
-    { "id": "context-reading", "activate_when": "has_readable_sources" }
+    {
+      "id": "knowledge-qa",
+      "activate_when": "has_selected_knowledge_bases"
+    },
+    {
+      "id": "chat-memory",
+      "activate_when": "history_enabled"
+    },
+    {
+      "id": "context-reading",
+      "activate_when": "has_readable_sources"
+    }
   ],
-  "allowed_tools": ["knowledge.search", "memory.search", "sources.read"],
+  "allowed_tools": [
+    "knowledge.search",
+    "memory.search",
+    "sources.read",
+    "memory.read"
+  ],
   "limits": {
     "max_model_calls": 10,
     "max_tool_calls": 20,

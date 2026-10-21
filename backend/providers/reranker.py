@@ -153,7 +153,7 @@ class _OpenAICompatibleReranker:
         return sorted(results, key=lambda r: r.score, reverse=True)
 
 
-def build_reranker(ai_model: AIModel) -> _CohereReranker | _JinaReranker | _OpenAICompatibleReranker:
+def _build_reranker(ai_model: AIModel) -> _CohereReranker | _JinaReranker | _OpenAICompatibleReranker:
     """根据供应商接口类型构建 Reranker 实例。
 
     Supported interface types:
@@ -198,3 +198,8 @@ def build_reranker(ai_model: AIModel) -> _CohereReranker | _JinaReranker | _Open
         status_code=400,
         detail=f"Unsupported reranking interface type: {interface}. Supported: cohere, jina, openai_compatible",
     )
+
+
+def build_reranker(ai_model: AIModel):
+    from providers.telemetry import TrackedClient
+    return TrackedClient(_build_reranker(ai_model), ai_model.id, "rerank")

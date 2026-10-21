@@ -52,6 +52,13 @@ DEFAULTS: dict[str, str] = {
     "chat_history_turns": "5",     # number of recent turns to pass to the LLM (0 = unlimited)
     "chat_max_tool_rounds": "5",   # max tool-calling rounds per RAG turn
     "chat_compress_model_id": "",  # chat model ID for compressing old history (empty = disabled)
+    "chat_context_mode": "legacy",
+    "chat_input_tokens": "12000",
+    "chat_output_tokens": "2048",
+    "chat_run_input_tokens": "48000",
+    "chat_run_output_tokens": "8192",
+    "chat_summary_chars": "2000",
+    "chat_summary_tokens": "1500",
     "memory_query_scope": "disabled",
     "memory_query_mode": "keyword",
     "knowledge_query_mode": "rag",
@@ -67,6 +74,14 @@ DEFAULTS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 class SettingsOut(BaseModel):
+    chat_context_mode: Literal["legacy", "working"] = "legacy"
+    chat_input_tokens: int = Field(default=12000, ge=1024, le=1000000)
+    chat_output_tokens: int = Field(default=2048, ge=128, le=32000)
+    chat_run_input_tokens: int = Field(default=48000, ge=1024, le=1000000)
+    chat_run_output_tokens: int = Field(default=8192, ge=128, le=32000)
+    chat_summary_chars: int = Field(default=2000, ge=256, le=10000)
+    chat_summary_tokens: int = Field(default=1500, ge=256, le=32000)
+
     """Full settings object returned to clients / 完整设置对象。"""
     language: str = Field(examples=["zh"], description="UI language: zh / en")
     memory_query_scope: Literal["disabled", "7", "30", "360", "all"] = "disabled"
@@ -186,6 +201,14 @@ class SettingsOut(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
+    chat_context_mode: Literal["legacy", "working"] | None = None
+    chat_input_tokens: int | None = Field(default=None, ge=1024, le=1000000)
+    chat_output_tokens: int | None = Field(default=None, ge=128, le=32000)
+    chat_run_input_tokens: int | None = Field(default=None, ge=1024, le=1000000)
+    chat_run_output_tokens: int | None = Field(default=None, ge=128, le=32000)
+    chat_summary_chars: int | None = Field(default=None, ge=256, le=10000)
+    chat_summary_tokens: int | None = Field(default=None, ge=256, le=32000)
+
     """Partial update — only provided fields are changed / 仅更新传入的字段。"""
     memory_query_scope: Literal["disabled", "7", "30", "360", "all"] | None = None
     memory_query_mode: Literal["keyword", "rag"] | None = None

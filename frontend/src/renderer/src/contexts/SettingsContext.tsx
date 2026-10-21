@@ -16,6 +16,13 @@ interface SettingsContextType {
 }
 
 const defaultSettings: SettingsOut = {
+  chat_context_mode: 'legacy',
+  chat_input_tokens: 12000,
+  chat_output_tokens: 2048,
+  chat_run_input_tokens: 48000,
+  chat_run_output_tokens: 8192,
+  chat_summary_chars: 2000,
+  chat_summary_tokens: 1500,
   memory_query_scope: 'disabled',
   memory_query_mode: 'keyword',
   knowledge_query_mode: 'rag',

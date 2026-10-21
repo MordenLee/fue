@@ -35,7 +35,9 @@ def build_llm(ai_model: AIModel):
 
     if interface in ("openai", "openai_compatible"):
         from langchain_openai import ChatOpenAI
-        return ChatOpenAI(**kwargs)
+        # Request standard streamed usage frames; some compatible providers may
+        # still omit them, which the ledger explicitly reports as unknown.
+        return ChatOpenAI(**kwargs, stream_usage=True)
 
     if interface == "anthropic":
         from langchain_anthropic import ChatAnthropic

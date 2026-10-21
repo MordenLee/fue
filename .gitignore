@@ -9,6 +9,7 @@ __pycache__/
 # ── Backend runtime data ─────────────────────────────────────────────────────
 backend/app.db
 backend/chroma_data/
+backend/working_memory/
 backend/logs/
 
 # ── Node / Electron ──────────────────────────────────────────────────────────

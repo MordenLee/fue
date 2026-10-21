@@ -104,6 +104,11 @@ def commit_chat(db, conversation_id=None, *, action="snapshot", forget_ids=None,
     global DELETION_EPOCH
     with INDEX_LOCK:
         db.flush()
+        from memory.working import invalidate
+        if forget_ids or forget_conversation or forget_all:
+            invalidate(db, None if forget_all else conversation_id, forget=True)
+        elif action in {"edit", "regenerate"}:
+            invalidate(db, conversation_id)
         if forget_ids or forget_conversation or forget_all:
             pair_query, event_query = db.query(QAPair), db.query(ChatEvent)
             if not forget_all:

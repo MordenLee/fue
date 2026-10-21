@@ -3,7 +3,7 @@
 from providers.models import AIModel
 
 
-def build_embedder(ai_model: AIModel, *, timeout_seconds: float | None = None):
+def _build_embedder(ai_model: AIModel, *, timeout_seconds: float | None = None):
     """根据供应商接口类型构建 LangChain Embeddings 实例。"""
     provider = ai_model.provider
     interface = provider.interface_type
@@ -34,3 +34,8 @@ def build_embedder(ai_model: AIModel, *, timeout_seconds: float | None = None):
         return OllamaEmbeddings(**kwargs)
 
     raise ValueError(f"Unsupported embedding interface type: {interface}")
+
+
+def build_embedder(ai_model: AIModel, *, timeout_seconds: float | None = None):
+    from providers.telemetry import TrackedClient
+    return TrackedClient(_build_embedder(ai_model, timeout_seconds=timeout_seconds), ai_model.id, "embedding")

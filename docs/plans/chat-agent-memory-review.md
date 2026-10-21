@@ -2,6 +2,8 @@
 
 日期：2026-10-21。静态审查基线：`09ae277`。
 
+本文保留基线审查历史，下面的“当前”指该基线，不代表 1.0.11。已实现能力见 [聊天记忆说明](../design/conversation-memory.md)；下一阶段已确认、待实施的长对话架构见 [工作记忆 v2](../design/working-context.md) 与 [实施清单](working-context-v2.md)。
+
 ## Git 边界
 
 - `archive/chat-write-2026-10-21` 保存当前 Chat、基础 Writing 和已有兼容性修改的完整源码快照。

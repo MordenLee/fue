@@ -9,7 +9,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-TOOL_IDS = {"knowledge.search", "memory.search", "sources.read"}
+TOOL_IDS = {"knowledge.search", "memory.search", "sources.read", "memory.read"}
 
 
 class SearchArguments(BaseModel):
@@ -171,7 +171,23 @@ def make_source_bindings(kb_ids, session_factory, retrieved=None):
                 retrieved.append(chunk)
         return ToolOutput(json.dumps(result, ensure_ascii=False))
 
+    class MemoryReadArguments(BaseModel):
+        ref: str = Field(pattern=r"^(chat|material|compaction):[A-Za-z0-9-]+$")
+        offset: int = Field(default=0, ge=0)
+        length: int = Field(default=2000, ge=100, le=4000)
+
+    async def direct_read(args):
+        from memory.working import read_memory
+        values = MemoryReadArguments.model_validate(args).model_dump()
+        def run():
+            with session_factory() as db:
+                return read_memory(db, **values)
+        return ToolOutput(json.dumps(await asyncio.to_thread(run), ensure_ascii=False))
+
     return [
+        ToolBinding("memory.read", StructuredTool.from_function(name="read_memory",
+                    description="Read a known chat:, material: or compaction: reference directly, without semantic search. Compaction returns a paginated directory; read chat refs for full text. History permissions apply.",
+                    args_schema=MemoryReadArguments, coroutine=direct_read), direct_read),
         ToolBinding("memory.search", StructuredTool.from_function(name="search_chat_history",
                     description="Search QA-pair history by text/time/conversation. Empty query browses chronologically. Results are previews; use read_context to expand.",
                     args_schema=HistoryArguments, coroutine=history), history),

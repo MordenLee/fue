@@ -43,7 +43,7 @@ def _get_prompts(language: str) -> tuple[str, str]:
     return _PROMPTS.get(language, _PROMPTS["zh"])
 
 
-async def asummarize(conversation_text: str, ai_model: AIModel, language: str = "zh") -> str:
+async def asummarize(conversation_text: str, ai_model: AIModel, language: str = "zh", ledger=None) -> str:
     """Async: summarize *conversation_text* using *ai_model*.
 
     *language* controls the output language (``'zh'`` or ``'en'``).
@@ -54,10 +54,12 @@ async def asummarize(conversation_text: str, ai_model: AIModel, language: str = 
     system_prompt, human_template = _get_prompts(language)
     try:
         llm = build_llm(ai_model)
-        response = await llm.ainvoke([
+        messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=human_template.format(text=conversation_text)),
-        ])
+        ]
+        response = (await ledger.invoke(llm, messages, category="title", model_id=ai_model.id)
+                    if ledger else await llm.ainvoke(messages))
         return response.content.strip()
     except Exception as exc:
         logger.warning("Summarizer failed: %s", exc)

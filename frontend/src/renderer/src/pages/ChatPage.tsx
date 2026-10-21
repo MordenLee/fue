@@ -11,6 +11,7 @@ import { EmptyState } from '../components/ui/EmptyState'
 import { useConversations } from '../hooks/useConversations'
 import { useMessages } from '../hooks/useMessages'
 import { useStreamingChat } from '../hooks/useStreamingChat'
+import { WorkingMemoryPanel } from '../components/chat/WorkingMemoryPanel'
 import type { ChunkInfo } from '../hooks/useStreamingChat'
 import { useFolders } from '../hooks/useFolders'
 import { useSettings } from '../contexts/SettingsContext'
@@ -601,6 +602,9 @@ export function ChatPage() {
       {selected ? (
         <>
           <div className="flex-1 flex flex-col min-w-0 pb-2">
+            <WorkingMemoryPanel key={selected.id} conversationId={selected.id}
+              activity={streaming.conversationId === selected.id ? streaming.activity : []}
+              busy={isStreamingForSelected} revision={messages.length} />
             <MessageList
               messages={messages}
               streamingContent={isStreamingForSelected ? streaming.currentResponse : undefined}

@@ -1,4 +1,12 @@
 export interface SettingsOut {
+  chat_context_mode: 'legacy' | 'working'
+  chat_input_tokens: number
+  chat_output_tokens: number
+  chat_run_input_tokens: number
+  chat_run_output_tokens: number
+  chat_summary_chars: number
+  chat_summary_tokens: number
+
   memory_query_scope: 'disabled' | '7' | '30' | '360' | 'all'
   memory_query_mode: 'keyword' | 'rag'
   knowledge_query_mode: 'keyword' | 'rag'
@@ -25,6 +33,14 @@ export interface SettingsOut {
 }
 
 export interface SettingsUpdate {
+  chat_context_mode?: SettingsOut['chat_context_mode']
+  chat_input_tokens?: SettingsOut['chat_input_tokens']
+  chat_output_tokens?: SettingsOut['chat_output_tokens']
+  chat_run_input_tokens?: SettingsOut['chat_run_input_tokens']
+  chat_run_output_tokens?: SettingsOut['chat_run_output_tokens']
+  chat_summary_chars?: SettingsOut['chat_summary_chars']
+  chat_summary_tokens?: SettingsOut['chat_summary_tokens']
+
   memory_query_scope?: SettingsOut['memory_query_scope']
   memory_query_mode?: SettingsOut['memory_query_mode']
   knowledge_query_mode?: SettingsOut['knowledge_query_mode']

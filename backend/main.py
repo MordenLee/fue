@@ -40,6 +40,7 @@ from folders.router import router as folders_router
 from agents.runtime import get_registry
 from memory.router import router as memory_router, worker as memory_worker
 from memory.mcp import router as mcp_router
+from memory.workspace import router as workspace_router
 
 # Fail before serving chat requests if packaged agent/skill resources are invalid.
 get_registry()
@@ -208,6 +209,7 @@ app.include_router(conversations_router)
 app.include_router(folders_router)
 app.include_router(memory_router)
 app.include_router(mcp_router)
+app.include_router(workspace_router)
 
 
 class MessageResponse(BaseModel):

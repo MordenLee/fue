@@ -50,12 +50,29 @@ class AgentRunner:
         self.context_length = context_length
         limits = agent.definition.limits
         self.tool_budget = min(limits.max_tool_calls, max_tool_calls or limits.max_tool_calls)
+        self.context_preparer = None
+        self.ledger = None
+        self.model_id = None
+        self.context_validator = None
+        self.activity_sink = None
 
     async def events(self, messages, *, streaming=True):
         limits = self.agent.definition.limits
         # timeout also cancels pending provider/tool awaitables. CancelledError propagates.
         async with asyncio.timeout(limits.run_timeout_seconds):
+            if self.context_preparer:
+                async for update in self.context_preparer():
+                    if update["type"] == "_messages":
+                        messages = update["messages"]
+                    else:
+                        yield AgentEvent("activity", update)
             async for event in self._events(list(messages), streaming):
+                if self.activity_sink:
+                    if event.type == "activity" and event.data.get("type") == "model_started":
+                        self.activity_sink("model_started", event.data)
+                    elif event.type in {"tool_call", "tool_result"}:
+                        self.activity_sink("tool_started" if event.type == "tool_call" else "tool_completed",
+                                           {k: v for k, v in event.data.items() if k in {"name", "status", "call_id", "cached"}})
                 yield event
 
     async def _events(self, messages, streaming):
@@ -69,9 +86,13 @@ class AgentRunner:
                                  if self.context_length else limits.max_tool_result_chars)
         # Reserve envelope/receipt space as well; raw result text cannot consume it.
         self.result_budget = self.result_budget * 3 // 4
+        if self.ledger and self.ledger.per_input:
+            from memory.working import estimate_messages
+            self.result_budget = min(self.result_budget, max(0, self.ledger.per_input -
+                                     estimate_messages(base) - self.ledger.schema_tokens - 1024))
         self.used_result_chars = 0
         self.used_search_chars = 0
-        self.has_reader = any(t.id == "sources.read" for t in self.tools.values())
+        self.has_reader = any(t.id in {"sources.read", "memory.read"} for t in self.tools.values())
         self.blocked_tool_names = set()
         tools_enabled = bool(self.tools)
         calls, cache, evidence = 0, {}, []
@@ -97,6 +118,8 @@ class AgentRunner:
             bound = self.llm
 
         for model_index in range(limits.max_model_calls):
+            if self.context_validator:
+                self.context_validator()
             if memory_service.DELETION_EPOCH != deletion_epoch:
                 # Drop transient tool caches/evidence when source history is deleted.
                 evidence.clear()
@@ -109,6 +132,13 @@ class AgentRunner:
             # Always reserve the last model call for an answer without tools.
             may_use_tools = (tools_enabled and calls < self.tool_budget and model_index < limits.max_model_calls - 1
                              and self.result_budget - self.used_result_chars > 512)
+            if self.ledger and self.ledger.per_input:
+                from memory.working import estimate_messages
+                next_input = estimate_messages(working) + self.ledger.schema_tokens
+                # Stop planning while there is still room for one final answer.
+                if ((self.ledger.input_limit and self.ledger.input_limit - self.ledger.input_used < next_input * 2 + 1024) or
+                        (self.ledger.output_limit and self.ledger.output_limit - self.ledger.output_used < (self.ledger.per_output or 512) * 2)):
+                    may_use_tools = False
             available = [t.schema for t in self.tools.values() if t.schema.name not in self.blocked_tool_names and
                          not (self.has_reader and t.id.endswith(".search") and self.used_search_chars >= self.result_budget // 2 - 256)]
             if may_use_tools and available and len(available) != len(self.tools):
@@ -119,8 +149,9 @@ class AgentRunner:
                 model = bound if may_use_tools else self.llm
             check_context(working, self.context_length)
             response = None
+            yield AgentEvent("activity", {"type": "model_started", "step": model_index + 1})
             if streaming:
-                gen = model.astream(working)
+                gen = self.ledger.stream(model, working, self.model_id) if self.ledger else model.astream(working)
                 try:
                     async for chunk in gen:
                         response = chunk if response is None else response + chunk
@@ -130,7 +161,12 @@ class AgentRunner:
                 finally:
                     await gen.aclose()
             else:
-                response = await model.ainvoke(working)
+                response = (await self.ledger.invoke(model, working, model_id=self.model_id)
+                            if self.ledger else await model.ainvoke(working))
+            if self.context_validator:
+                self.context_validator()
+            if self.ledger and self.ledger.records:
+                yield AgentEvent("activity", {"type": "usage_updated", **self.ledger.records[-1]})
             if response is None:
                 raise ValueError("Model returned an empty response")
             tool_calls = getattr(response, "tool_calls", None) or []
@@ -191,7 +227,12 @@ class AgentRunner:
                     raise ValueError("Search preview budget exhausted; use read_context on existing hits")
                 async with asyncio.timeout(self.agent.definition.limits.tool_timeout_seconds):
                     from memory.mcp import call_in_process
-                    output = await call_in_process(tool, args)
+                    from providers.telemetry import active_ledger
+                    token = active_ledger.set(self.ledger)
+                    try:
+                        output = await call_in_process(tool, args)
+                    finally:
+                        active_ledger.reset(token)
                 result = output if isinstance(output, ToolOutput) else ToolOutput(output)
                 text = result.content
                 cap = self.agent.definition.limits.max_tool_result_chars

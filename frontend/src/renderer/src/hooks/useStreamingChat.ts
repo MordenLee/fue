@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { chat, ragChat, streamChat, streamRAG } from '../services/chat'
 import { parseCiteMarkers } from '../utils/citation'
-import type { ChatMessage, SSEEvent, StreamRAGOptions } from '../types/chat'
+import type { ActivityEvent, ChatMessage, SSEEvent, StreamRAGOptions } from '../types/chat'
 import type { ReferenceItem } from '../types/conversation'
 
 interface ToolCallEvent {
@@ -59,6 +59,7 @@ function normalizeReferenceChunks(references: ReferenceItem[]): ChunkInfo[] {
 }
 
 export interface UseStreamingChatReturn {
+  activity: ActivityEvent[]
   isStreaming: boolean
   conversationId: number | null
   modelId: number | null
@@ -88,6 +89,7 @@ function toErrorMessage(err: unknown): string {
 }
 
 export function useStreamingChat(): UseStreamingChatReturn {
+  const [activity, setActivity] = useState<ActivityEvent[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [conversationId, setConversationId] = useState<number | null>(null)
   const [streamModelId, setStreamModelId] = useState<number | null>(null)
@@ -123,6 +125,10 @@ export function useStreamingChat(): UseStreamingChatReturn {
 
   const handleEvent = useCallback((event: SSEEvent) => {
     switch (event.type) {
+      case 'activity':
+        setActivity((prev) => [...prev.slice(-99), event.data])
+        if (event.data.type === 'tool_completed') setIsSearching(false)
+        break
       case 'token':
         setIsSearching(false)
         setCurrentResponse((prev) => prev + event.data)
@@ -185,6 +191,7 @@ export function useStreamingChat(): UseStreamingChatReturn {
       setSearchQuery(null)
       setCurrentResponse('')
       setToolCalls([])
+      setActivity([])
       setRetrievedChunks([])
       setCitations(null)
       setError(null)
@@ -224,6 +231,7 @@ export function useStreamingChat(): UseStreamingChatReturn {
             if (controller.signal.aborted || activeRequestIdRef.current !== requestId) return
 
             setCurrentResponse(res.content)
+            setActivity(res.activity ?? [])
             const refs = res.references ?? []
             if (refs.length > 0) {
               setCitations({ references: refs, cite_map: {} })
@@ -233,6 +241,7 @@ export function useStreamingChat(): UseStreamingChatReturn {
             const res = await chat(modelId, messages, conversationId, controller.signal)
             if (controller.signal.aborted || activeRequestIdRef.current !== requestId) return
             setCurrentResponse(res.content)
+            setActivity(res.activity ?? [])
           }
         } catch (err) {
           if (err instanceof Error && err.name === 'AbortError') return
@@ -263,5 +272,5 @@ export function useStreamingChat(): UseStreamingChatReturn {
     setIsSearching(false)
   }, [clearIdleTimer])
 
-  return { isStreaming, conversationId, modelId: streamModelId, isSearching, searchQuery, currentResponse, toolCalls, retrievedChunks, citations, error, send, abort }
+  return { activity, isStreaming, conversationId, modelId: streamModelId, isSearching, searchQuery, currentResponse, toolCalls, retrievedChunks, citations, error, send, abort }
 }

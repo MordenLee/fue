@@ -10,9 +10,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import sessionmaker
+from uuid import uuid4
 
 from agents.context import ContextLimitError, build_context, check_context
-from agents.runner import AgentRunner
+from agents.runner import AgentRunner, AgentEvent
 from agents.runtime import get_registry
 from agents.tools import make_knowledge_binding, make_source_bindings
 from auxmodels.rate_limiter import try_acquire
@@ -47,6 +49,8 @@ class ChatResponse(BaseModel):
     content: str
     model: str
     provider: str
+    run_id: str | None = None
+    activity: list[dict] = Field(default_factory=list)
     summary: str | None = None
     """Optional summary of this conversation turn, populated when chat_summary_model_id is configured."""
 
@@ -93,6 +97,8 @@ class RAGChatResponse(BaseModel):
     references: list[CitationRef]
     model: str
     provider: str
+    run_id: str | None = None
+    activity: list[dict] = Field(default_factory=list)
     summary: str | None = None
 
 
@@ -216,10 +222,14 @@ def _prepare(model_id, payload, db, *, rag):
             if not db.get(KnowledgeBase, kb_id):
                 raise HTTPException(status_code=404, detail=f"Knowledge base not found: {kb_id}")
     history_enabled = memory_setting(db, "memory_query_scope") != "disabled"
+    working_mode = memory_setting(db, "chat_context_mode") == "working"
+    if working_mode and not payload.conversation_id:
+        raise HTTPException(status_code=400, detail="Working context requires a saved conversation")
     agent = get_registry().resolve(has_knowledge_bases=bool(kb_ids), history_enabled=history_enabled)
     messages = build_context(agent, payload.messages, max(0, _setting_int(db, "chat_history_turns", 5)))
     try:
-        check_context(messages, model.context_length)
+        if not working_mode:
+            check_context(messages, model.context_length)
         llm = build_llm(model)
     except (ContextLimitError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -248,6 +258,42 @@ def _prepare(model_id, payload, db, *, rag):
             commit_chat(db, payload.conversation_id, action="prompt")
         if last is not None and isinstance(last.id, int):
             runner.source_message_id = last.id
+    runner.run_id = str(uuid4())
+    runner.activity = []
+    runner.model_id = model_id
+    if isinstance(db, Session):
+        from agents.usage import UsageLedger
+        from memory.working import save_usage, estimate, prepare
+        factory = sessionmaker(bind=db.get_bind(), expire_on_commit=False)
+        def sink(category, used_model, info):
+            save_usage(factory, payload.conversation_id, runner.run_id, category, used_model, info)
+        limits = dict(input_limit=_setting_int(db, "chat_run_input_tokens", 48000),
+                      output_limit=_setting_int(db, "chat_run_output_tokens", 8192),
+                      per_input=_setting_int(db, "chat_input_tokens", 12000),
+                      per_output=_setting_int(db, "chat_output_tokens", 2048)) if working_mode else {}
+        schema_tokens = sum(estimate(t.schema.args_schema.model_json_schema()) + estimate(t.schema.description) for t in bindings)
+        runner.ledger = UsageLedger(sink=sink, schema_tokens=schema_tokens, **limits)
+        def activity_sink(kind, data):
+            if payload.conversation_id:
+                from memory.working import event
+                from memory.service import INDEX_LOCK
+                with INDEX_LOCK, factory() as event_db:
+                    if event_db.get(Conversation, payload.conversation_id):
+                        event(event_db, payload.conversation_id, kind, data, runner.run_id)
+                        event_db.commit()
+        runner.activity_sink = activity_sink
+        if working_mode:
+            runner.context_preparer = lambda: prepare(factory, payload.conversation_id, agent, model.context_length,
+                                                       kb_ids, runner.run_id, runner.ledger)
+            from memory.working import fingerprint
+            expected_context = fingerprint(db, payload.conversation_id)
+            expected_scope = memory_setting(db, "memory_query_scope")
+            def validate_context():
+                with factory() as check_db:
+                    if (fingerprint(check_db, payload.conversation_id) != expected_context or
+                            memory_setting(check_db, "memory_query_scope") != expected_scope):
+                        raise ContextLimitError("Conversation or history access changed; start a new turn")
+            runner.context_validator = validate_context
     return model, runner, messages, retrieved
 
 
@@ -258,7 +304,7 @@ def _finalize(text, retrieved, payload, db, *, rag):
                               existing_references=payload.existing_references)
 
 
-async def _summarize(summary_model_id, language, messages, text):
+async def _summarize(summary_model_id, language, messages, text, ledger=None):
     if not summary_model_id:
         return None
     # Every background job owns its Session, including loading its provider.
@@ -266,12 +312,15 @@ async def _summarize(summary_model_id, language, messages, text):
         model = load_chat_model(summary_model_id, db)
         if not model:
             return None
-        return await asummarize(_fmt_conversation(messages, text), model, language=language) or None
+        # Titles do not need the entire conversation on every turn.
+        last_user = next((m for m in reversed(messages) if m.role == "user"), None)
+        title_input = (last_user.content[:600] if last_user else "") + "\n" + text[:600]
+        return await asummarize(title_input, model, language=language, ledger=ledger) or None
 
 
-async def _summarize_background(summary_model_id, language, messages, text, conversation_id, expected_epoch):
+async def _summarize_background(summary_model_id, language, messages, text, conversation_id, expected_epoch, ledger=None):
     try:
-        summary = await _summarize(summary_model_id, language, messages, text)
+        summary = await _summarize(summary_model_id, language, messages, text, ledger)
         if summary and conversation_id:
             from memory import service as memory_service
             with SessionLocal() as db:
@@ -287,6 +336,8 @@ async def _respond(model_id, payload, db, *, rag):
     text = None
     try:
         async for event in runner.events(messages, streaming=False):
+            if event.type == "activity":
+                runner.activity.append(event.data)
             if event.type == "final":
                 text = event.data
     except Exception as exc:
@@ -301,13 +352,14 @@ async def _respond(model_id, payload, db, *, rag):
     summary = None
     try:
         summary = await _summarize(_setting_int(db, "chat_summary_model_id", None),
-                                   _language(db), payload.messages, content)
+                                   _language(db), payload.messages, content, runner.ledger)
     except Exception:
         logger.exception("Agent summarization failed; keeping generated answer")
     if payload.conversation_id:
         _save_turn(db, payload.conversation_id, payload.messages, content, summary,
                    references if rag else None, model_id=model_id, source_user_message_id=runner.source_message_id)
-    data = dict(content=content, model=model.display_name, provider=model.provider.name, summary=summary)
+    data = dict(content=content, model=model.display_name, provider=model.provider.name, summary=summary,
+                run_id=runner.run_id, activity=runner.activity)
     if rag:
         data["references"] = references
         return RAGChatResponse(**data)
@@ -318,6 +370,29 @@ def _sse(kind, value=None):
     if value is None:
         return f"data: [{kind}]\n\n"
     return f"data: [{kind}] {json.dumps(value, ensure_ascii=False)}\n\n"
+
+
+async def _runner_events(runner, messages):
+    """Keep the stream visibly alive without cancelling an in-flight provider call."""
+    iterator, pending = runner.events(messages), None
+    try:
+        while True:
+            if pending is None:
+                pending = asyncio.create_task(anext(iterator))
+            done, _ = await asyncio.wait({pending}, timeout=10)
+            if not done:
+                yield AgentEvent("activity", {"type": "waiting"})
+                continue
+            task, pending = pending, None
+            try:
+                yield task.result()
+            except StopAsyncIteration:
+                return
+    finally:
+        if pending:
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+        await iterator.aclose()
 
 
 def _stream_response(model_id, payload, db, *, rag):
@@ -331,7 +406,8 @@ def _stream_response(model_id, payload, db, *, rag):
         text = None
         partial = []
         try:
-            async for event in runner.events(messages):
+            yield _sse("ACTIVITY", {"type": "run_started", "run_id": runner.run_id})
+            async for event in _runner_events(runner, messages):
                 if event.type == "token":
                     partial.append(event.data)
                     # Legacy clients receive provisional tokens, then a JSON final replacement.
@@ -341,7 +417,15 @@ def _stream_response(model_id, payload, db, *, rag):
                     yield _sse("CLEAR")
                 elif event.type == "tool_call":
                     yield _sse("TOOL_CALL", event.data)
-                    yield _sse("SEARCHING", {"query": event.data["args"].get("query", "")})
+                    yield _sse("ACTIVITY", {"type": "tool_started", **event.data})
+                    if event.data["name"].startswith("search_"):
+                        yield _sse("SEARCHING", {"query": event.data["args"].get("query", "")})
+                elif event.type == "tool_result":
+                    yield _sse("ACTIVITY", {"type": "tool_completed", "name": event.data.get("name", event.data["tool"]),
+                                           "status": event.data["status"], "cached": event.data.get("cached", False)})
+                elif event.type == "activity":
+                    runner.activity.append(event.data)
+                    yield _sse("ACTIVITY", event.data)
                 elif event.type == "final":
                     text = event.data
             if text is None:
@@ -358,7 +442,7 @@ def _stream_response(model_id, payload, db, *, rag):
             if summary_model_id and payload.conversation_id:
                 task = asyncio.create_task(_summarize_background(
                     summary_model_id, language, payload.messages, content, payload.conversation_id,
-                    summary_epoch))
+                    summary_epoch, runner.ledger))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
         except asyncio.CancelledError:

@@ -97,7 +97,7 @@ async def endpoint(request: Request):
         history_enabled = setting(db, "memory_query_scope") != "disabled"
     sources = make_source_bindings(kb_ids, SessionLocal)
     bindings = ([make_knowledge_binding(kb_ids, [], SessionLocal)] if kb_ids else [])
-    bindings += [b for b in sources if (b.id == "memory.search" and history_enabled) or
+    bindings += [b for b in sources if (b.id in {"memory.search", "memory.read"} and history_enabled) or
                  (b.id == "sources.read" and (kb_ids or history_enabled))]
     return JSONResponse(await dispatch(message, bindings))
 

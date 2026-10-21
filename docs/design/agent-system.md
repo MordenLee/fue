@@ -1,10 +1,12 @@
 # FUE Agent 体系设计 v1
 
-状态：实施前设计。日期：2026-10-21。基线：`09ae277`。
+状态：v1 历史设计（部分已实现，非当前实现清单）。日期：2026-10-21。原始基线：`09ae277`。
 
-实现更新：现已接入内置资源加载、上下文构建、通用 Runner 和独立 Session 工具绑定；四个现有 Chat/RAG 接口均使用新链路。详见 [运行时说明](../../backend/agents/README.md)。本文件中的持久化 RunService、新事件协议、消息修订与长期记忆仍为目标设计，未随本次接入实现。
+实现更新：现已接入内置资源加载、上下文构建、通用 Runner 和独立 Session 工具绑定；四个现有 Chat/RAG 接口均使用新链路。详见 [运行时说明](../../backend/agents/README.md)。持久化 RunService 与新事件协议仍未实现；消息修订与完整聊天检索已在后续实现。
 
 后续实现更新：完整聊天记忆、问答索引、修订日志及 MCP 翻阅已落地，具体语义以 [conversation-memory.md](conversation-memory.md) 为准。本文件中“只保存提炼结论”或首期单轮检索的旧假设不适用于当前实现。
+
+v2 架构更新：采用 [工作记忆与上下文压缩](working-context.md) 的 ContextPlanner、材料生命周期、每会话 summary.md、持久压缩事件与精确回读；已部分接入本地开发代码，范围见 [验证说明](../validation/working-context-2026-10-21.md) 和 [实施清单](../plans/working-context-v2.md)。本文后续目录与流程保留为 v1 设计背景，与 v2 冲突时以 v2 目标设计为准；开发版工作记忆仍需显式启用。
 
 ## 1. 核心决定
 
