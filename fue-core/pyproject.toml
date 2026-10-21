@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fue-core"
+version = "1.0.11"
+description = "FUE local knowledge, conversation memory and research runtime"
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[project.scripts]
+fue = "fue_core.cli:main"
+fue-core = "fue_core.server:run"
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools]
+py-modules = ["database"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["fue_core*", "agents*", "admin*", "auxmodels*", "chat*", "conversations*", "folders*", "knowledge*", "memory*", "providers*", "settings*"]
+
+[tool.setuptools.package-data]
+agents = ["resources/**/*.json", "resources/**/*.md"]
+fue_core = ["resources/*.json"]

@@ -2,9 +2,9 @@
   "name": "fue",
   "private": true,
   "scripts": {
-    "dev": "cd frontend && npm run dev",
-    "build": "cd frontend && npm run build",
-    "build:win": "cd frontend && npm run build:win"
+    "dev": "cd fue-studio && npm run dev",
+    "build": "cd fue-studio && npm run build",
+    "build:win": "cd fue-studio && npm run build:win"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -69,9 +69,9 @@ FUE 是一个基于 Electron、React、TypeScript 和 FastAPI 的桌面 AI 工�
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r fue-core/requirements.txt
 npm install
-npm --prefix frontend install
+npm --prefix fue-studio install
 npm run dev
 ```
 
@@ -80,16 +80,16 @@ npm run dev
 类型检查与构建：
 
 ```powershell
-npm --prefix frontend run typecheck
+npm --prefix fue-studio run typecheck
 npm run build
 ```
 
-更多说明见 [后端说明](backend/README.md) 与 [前端说明](frontend/README.md)。
+更多说明见 [后端说明](fue-core/README.md) 与 [前端说明](fue-studio/README.md)。
 
 ## 目录
 
-- `frontend/`：Electron 主进程、预加载层与 React 界面。
-- `backend/`：FastAPI 服务、对话、模型与知识库相关模块。
+- `fue-studio/`：Electron 主进程、预加载层与 React 界面。
+- `fue-core/`：FastAPI 服务、对话、模型与知识库相关模块。
 - `shared/`：共享配置。
 - `i18n/`：中英文翻译资源。
 

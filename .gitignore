@@ -42,3 +42,19 @@ frontend/.env.*.local
 .DS_Store
 Thumbs.db
 .vscode/settings.json
+
+# Split component outputs and private runtime data
+fue-core/app.db*
+fue-core/chroma_data/
+fue-core/working_memory/
+fue-core/runtime/
+fue-core/logs/
+fue-core/.env*
+backend/runtime/
+fue-studio/dist*/
+fue-studio/out/
+fue-studio/build/python-runtime/
+fue-studio/.env*
+.tmp_split_backup.py
+fue-core/build/
+fue-core/*.egg-info/
