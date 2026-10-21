@@ -1,22 +1,24 @@
 {
   "schema_version": 1,
   "id": "chat",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "FUE Chat",
   "prompt_file": "prompts/chat.md",
   "skills": [
-    { "id": "knowledge-qa", "activate_when": "has_selected_knowledge_bases" }
+    { "id": "knowledge-qa", "activate_when": "has_selected_knowledge_bases" },
+    { "id": "chat-memory", "activate_when": "history_enabled" },
+    { "id": "context-reading", "activate_when": "has_readable_sources" }
   ],
-  "allowed_tools": ["knowledge.search"],
+  "allowed_tools": ["knowledge.search", "memory.search", "sources.read"],
   "limits": {
-    "max_model_calls": 4,
-    "max_tool_calls": 3,
+    "max_model_calls": 10,
+    "max_tool_calls": 20,
     "tool_timeout_seconds": 30,
     "run_timeout_seconds": 180,
-    "max_tool_result_chars": 24000
+    "max_tool_result_chars": 12000
   },
   "context_policy": "conversation_budgeted",
   "output_policy": "text_with_verified_references",
   "unsupported_tool_mode": "retrieve_then_answer",
-  "tool_protocol": "evidence_synthesis"
+  "tool_protocol": "iterative_evidence"
 }

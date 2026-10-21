@@ -1,0 +1,5 @@
+{
+  "schema_version": 1, "id": "chat-memory", "version": "1.0.0", "name": "聊天历史检索",
+  "instructions_file": "SKILL.md", "required_tools": ["memory.search"],
+  "required_resources": ["chat_history"], "execution_policy": "bounded_retrieval", "citation_policy": "verified_evidence_only"
+}

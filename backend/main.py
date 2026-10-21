@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -37,6 +38,8 @@ from auxmodels.router import router as aux_router
 from conversations.router import router as conversations_router
 from folders.router import router as folders_router
 from agents.runtime import get_registry
+from memory.router import router as memory_router, worker as memory_worker
+from memory.mcp import router as mcp_router
 
 # Fail before serving chat requests if packaged agent/skill resources are invalid.
 get_registry()
@@ -170,7 +173,15 @@ async def lifespan(app_instance: FastAPI):
     port = getattr(app_instance.state, '_backend_port', None)
     if port is not None:
         print(f"BACKEND_PORT:{port}", flush=True)
-    yield
+    task = asyncio.create_task(memory_worker(SessionLocal))
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="App Backend", version="0.1.0", lifespan=lifespan)
@@ -195,6 +206,8 @@ app.include_router(admin_router)
 app.include_router(aux_router)
 app.include_router(conversations_router)
 app.include_router(folders_router)
+app.include_router(memory_router)
+app.include_router(mcp_router)
 
 
 class MessageResponse(BaseModel):

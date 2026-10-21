@@ -1,6 +1,6 @@
 """API routes for application settings."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -24,6 +24,10 @@ def _to_out(data: dict[str, str]) -> SettingsOut:
 
     return SettingsOut(
         language=data["language"],
+        memory_query_scope=data["memory_query_scope"],
+        memory_query_mode=data["memory_query_mode"],
+        knowledge_query_mode=data["knowledge_query_mode"],
+        memory_embed_model_id=_to_int_or_none("memory_embed_model_id"),
         embed_max_concurrency=int(data["embed_max_concurrency"]),
         embed_use_model_qps=data.get("embed_use_model_qps", "false") == "true",
         kb_index_max_workers=int(data.get("kb_index_max_workers", DEFAULTS["kb_index_max_workers"])),
@@ -60,6 +64,8 @@ def update_settings(payload: SettingsUpdate, db: Session = Depends(get_db)):
     updates = payload.model_dump(exclude_unset=True)
 
     for key, value in updates.items():
+        if key in {"memory_query_scope", "memory_query_mode", "knowledge_query_mode"} and value is None:
+            raise HTTPException(status_code=400, detail=f"{key} cannot be null")
         # settings table stores everything as plain strings
         if isinstance(value, bool):
             str_value = "true" if value else "false"

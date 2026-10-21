@@ -23,7 +23,7 @@ class Limits(Declaration):
 
 class SkillRef(Declaration):
     id: str = Field(pattern=r"^[a-z0-9-]+$")
-    activate_when: Literal["has_selected_knowledge_bases"]
+    activate_when: Literal["has_selected_knowledge_bases", "history_enabled", "has_readable_sources"]
 
 
 class AgentDefinition(Declaration):
@@ -38,7 +38,7 @@ class AgentDefinition(Declaration):
     context_policy: Literal["conversation_budgeted"]
     output_policy: Literal["text_with_verified_references"]
     unsupported_tool_mode: Literal["retrieve_then_answer"]
-    tool_protocol: Literal["evidence_synthesis", "native"] = "evidence_synthesis"
+    tool_protocol: Literal["evidence_synthesis", "native", "iterative_evidence"] = "evidence_synthesis"
 
 
 class SkillDefinition(Declaration):
@@ -48,7 +48,7 @@ class SkillDefinition(Declaration):
     name: str = Field(min_length=1)
     instructions_file: str
     required_tools: list[str]
-    required_resources: list[Literal["selected_knowledge_bases"]]
+    required_resources: list[Literal["selected_knowledge_bases", "chat_history", "readable_sources"]]
     execution_policy: Literal["bounded_retrieval"]
     citation_policy: Literal["verified_evidence_only"]
 
@@ -107,12 +107,14 @@ class AgentRegistry:
             raise ValueError("Agent resource references must be relative paths")
         return self._read(base / reference)
 
-    def resolve(self, agent_id: str = "chat", *, has_knowledge_bases: bool = False) -> ResolvedAgent:
+    def resolve(self, agent_id: str = "chat", *, has_knowledge_bases: bool = False, history_enabled: bool = False) -> ResolvedAgent:
         agent = self.agents[agent_id]
         instructions = [self.prompts[agent_id]]
         active, tools = [], set()
         for ref in agent.skills:
-            if has_knowledge_bases and ref.activate_when == "has_selected_knowledge_bases":
+            conditions = {"has_selected_knowledge_bases": has_knowledge_bases, "history_enabled": history_enabled,
+                          "has_readable_sources": has_knowledge_bases or history_enabled}
+            if conditions[ref.activate_when]:
                 skill, body = self.skills[ref.id]
                 active.append(skill.id)
                 tools.update(skill.required_tools)

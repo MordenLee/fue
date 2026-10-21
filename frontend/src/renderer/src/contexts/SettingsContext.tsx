@@ -16,6 +16,10 @@ interface SettingsContextType {
 }
 
 const defaultSettings: SettingsOut = {
+  memory_query_scope: 'disabled',
+  memory_query_mode: 'keyword',
+  knowledge_query_mode: 'rag',
+  memory_embed_model_id: null,
   language: 'zh',
   embed_max_concurrency: 4,
   embed_use_model_qps: false,

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 from agents.context import ContextLimitError, build_context, check_context
 from agents.runner import AgentRunner
 from agents.runtime import get_registry
-from agents.tools import make_knowledge_binding
+from agents.tools import make_knowledge_binding, make_source_bindings
 from auxmodels.rate_limiter import try_acquire
 from auxmodels.summarizer import asummarize
 from chat.citations import build_rag_response
@@ -23,6 +23,7 @@ from database import get_db, SessionLocal
 from providers.chat import build_llm, load_chat_model
 from providers.models import AIModel
 from settings.models import Setting
+from memory.service import commit_chat, record_interruption, setting as memory_setting
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -66,11 +67,11 @@ class RAGChatRequest(BaseModel):
         pattern=r"^(apa|mla|chicago|gb_t7714)$",
         description="Citation style: apa (default) | mla | chicago | gb_t7714",
     )
-    max_tool_rounds: int = Field(
-        default=5,
+    max_tool_rounds: int | None = Field(
+        default=None,
         ge=1,
-        le=10,
-        description="Max tool-calling rounds before forcing a final answer",
+        le=20,
+        description="Optional lower per-request cap on search and reading tool calls",
     )
     existing_references: list[dict] = Field(
         default_factory=list,
@@ -105,6 +106,7 @@ def _save_turn(
     summary: str | None = None,
     references: list | None = None,
     model_id: int | None = None,
+    source_user_message_id: int | None = None,
 ) -> None:
     """Append the last user message(s) + assistant reply to *conversation_id*.
 
@@ -114,6 +116,11 @@ def _save_turn(
     conv = db.get(Conversation, conversation_id)
     if not conv:
         raise ValueError(f"Conversation {conversation_id} no longer exists")
+    if source_user_message_id is not None:
+        source = db.get(Message, source_user_message_id)
+        expected = next((m.content for m in reversed(user_messages) if m.role == "user"), None)
+        if source is None or source.conversation_id != conversation_id or source.role != "user" or source.content != expected:
+            raise ValueError("Source question changed or was deleted while generating")
 
     max_pos = (
         db.query(sa_func.max(Message.position))
@@ -124,7 +131,8 @@ def _save_turn(
 
     # Append only the LAST user message to avoid duplicating history
     last_user = next((m for m in reversed(user_messages) if m.role == "user"), None)
-    if last_user:
+    persisted_last = db.query(Message).filter_by(conversation_id=conversation_id).order_by(Message.position.desc(), Message.id.desc()).first()
+    if last_user and not (persisted_last and persisted_last.role == "user" and persisted_last.content == last_user.content):
         db.add(Message(
             conversation_id=conversation_id,
             role="user",
@@ -145,7 +153,7 @@ def _save_turn(
     if summary:
         conv.summary = summary
     conv.updated_at = sa_func.now()
-    db.commit()
+    commit_chat(db, conversation_id, action="complete")
 
 
 def _update_conv_summary(db: Session, conversation_id: int, summary: str) -> None:
@@ -207,7 +215,8 @@ def _prepare(model_id, payload, db, *, rag):
         for kb_id in set(kb_ids):
             if not db.get(KnowledgeBase, kb_id):
                 raise HTTPException(status_code=404, detail=f"Knowledge base not found: {kb_id}")
-    agent = get_registry().resolve(has_knowledge_bases=bool(kb_ids))
+    history_enabled = memory_setting(db, "memory_query_scope") != "disabled"
+    agent = get_registry().resolve(has_knowledge_bases=bool(kb_ids), history_enabled=history_enabled)
     messages = build_context(agent, payload.messages, max(0, _setting_int(db, "chat_history_turns", 5)))
     try:
         check_context(messages, model.context_length)
@@ -219,13 +228,26 @@ def _prepare(model_id, payload, db, *, rag):
     retrieved = []
     existing = payload.existing_references if rag else []
     initial = max((int(ref.get("ref_num", 0)) for ref in existing), default=0) + 1
-    bindings = [make_knowledge_binding(kb_ids, retrieved, SessionLocal, initial)] if agent.tool_ids else []
+    bindings = [make_knowledge_binding(kb_ids, retrieved, SessionLocal, initial)] if "knowledge.search" in agent.tool_ids else []
+    bindings += [b for b in make_source_bindings(kb_ids, SessionLocal, retrieved) if b.id in agent.tool_ids]
     runner = AgentRunner(
         agent, llm, bindings, context_length=model.context_length,
         max_tool_calls=min(max(1, _setting_int(db, "chat_max_tool_rounds", 5)),
-                           payload.max_tool_rounds if rag else agent.definition.limits.max_tool_calls),
+                           payload.max_tool_rounds if rag and payload.max_tool_rounds is not None
+                           else agent.definition.limits.max_tool_calls),
     )
     logger.info("Agent %s skills=%s protocol=%s", agent.definition.id, agent.skills, agent.definition.tool_protocol)
+    runner.source_message_id = None
+    if payload.conversation_id:
+        user = next((m for m in reversed(payload.messages) if m.role == "user"), None)
+        last = db.query(Message).filter_by(conversation_id=payload.conversation_id).order_by(Message.position.desc()).first()
+        if user and not (last and last.role == "user" and last.content == user.content):
+            last = Message(conversation_id=payload.conversation_id, role="user", content=user.content,
+                           position=(last.position + 1) if last else 0)
+            db.add(last)
+            commit_chat(db, payload.conversation_id, action="prompt")
+        if last is not None and isinstance(last.id, int):
+            runner.source_message_id = last.id
     return model, runner, messages, retrieved
 
 
@@ -247,12 +269,15 @@ async def _summarize(summary_model_id, language, messages, text):
         return await asummarize(_fmt_conversation(messages, text), model, language=language) or None
 
 
-async def _summarize_background(summary_model_id, language, messages, text, conversation_id):
+async def _summarize_background(summary_model_id, language, messages, text, conversation_id, expected_epoch):
     try:
         summary = await _summarize(summary_model_id, language, messages, text)
         if summary and conversation_id:
+            from memory import service as memory_service
             with SessionLocal() as db:
-                _update_conv_summary(db, conversation_id, summary)
+                with memory_service.INDEX_LOCK:
+                    if memory_service.DELETION_EPOCH == expected_epoch:
+                        _update_conv_summary(db, conversation_id, summary)
     except Exception:
         logger.exception("Agent background summarization failed")
 
@@ -265,6 +290,10 @@ async def _respond(model_id, payload, db, *, rag):
             if event.type == "final":
                 text = event.data
     except Exception as exc:
+        if payload.conversation_id:
+            db.rollback()
+            record_interruption(db, payload.conversation_id, "", "failed", runner.source_message_id,
+                                next((m.content for m in reversed(payload.messages) if m.role == "user"), None))
         raise HTTPException(status_code=502, detail=f"Agent execution failed: {exc}") from exc
     if text is None:
         raise HTTPException(status_code=502, detail="Agent did not produce a final answer")
@@ -277,7 +306,7 @@ async def _respond(model_id, payload, db, *, rag):
         logger.exception("Agent summarization failed; keeping generated answer")
     if payload.conversation_id:
         _save_turn(db, payload.conversation_id, payload.messages, content, summary,
-                   references if rag else None, model_id=model_id)
+                   references if rag else None, model_id=model_id, source_user_message_id=runner.source_message_id)
     data = dict(content=content, model=model.display_name, provider=model.provider.name, summary=summary)
     if rag:
         data["references"] = references
@@ -295,15 +324,20 @@ def _stream_response(model_id, payload, db, *, rag):
     _, runner, messages, retrieved = _prepare(model_id, payload, db, rag=rag)
     summary_model_id = _setting_int(db, "chat_summary_model_id", None)
     language = _language(db)
+    from memory import service as memory_service
+    summary_epoch = memory_service.DELETION_EPOCH
 
     async def generate():
         text = None
+        partial = []
         try:
             async for event in runner.events(messages):
                 if event.type == "token":
+                    partial.append(event.data)
                     # Legacy clients receive provisional tokens, then a JSON final replacement.
                     yield f"data: {event.data}\n\n"
                 elif event.type == "clear":
+                    partial.clear()
                     yield _sse("CLEAR")
                 elif event.type == "tool_call":
                     yield _sse("TOOL_CALL", event.data)
@@ -316,18 +350,31 @@ def _stream_response(model_id, payload, db, *, rag):
             # A save failure must reach the client instead of pretending completion succeeded.
             if payload.conversation_id:
                 _save_turn(db, payload.conversation_id, payload.messages, content, None,
-                           references if rag else None, model_id=model_id)
+                           references if rag else None, model_id=model_id, source_user_message_id=runner.source_message_id)
             if references:
                 yield _sse("CITATIONS", {"references": references, "cite_map": cite_map})
             yield _sse("REPLACE", content)
             yield _sse("DONE")
             if summary_model_id and payload.conversation_id:
                 task = asyncio.create_task(_summarize_background(
-                    summary_model_id, language, payload.messages, content, payload.conversation_id))
+                    summary_model_id, language, payload.messages, content, payload.conversation_id,
+                    summary_epoch))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
+        except asyncio.CancelledError:
+            db.rollback()
+            if payload.conversation_id:
+                record_interruption(db, payload.conversation_id, "".join(partial), "cancelled", runner.source_message_id,
+                                    next((m.content for m in reversed(payload.messages) if m.role == "user"), None))
+            raise
         except Exception as exc:
             db.rollback()
+            if payload.conversation_id:
+                try:
+                    record_interruption(db, payload.conversation_id, "".join(partial), "failed", runner.source_message_id,
+                                        next((m.content for m in reversed(payload.messages) if m.role == "user"), None))
+                except Exception:
+                    logger.warning("Could not persist interrupted response")
             logger.exception("Agent streaming execution failed")
             detail = str(exc).replace("\n", " ").replace("\r", " ") or type(exc).__name__
             yield f"data: [ERROR] {detail}\n\n"

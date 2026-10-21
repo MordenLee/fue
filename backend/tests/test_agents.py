@@ -26,7 +26,7 @@ from agents.context import ContextLimitError, build_context
 from agents.registry import AgentRegistry
 from agents.runner import AgentRunner
 from agents.runtime import get_registry
-from agents.tools import SearchArguments, ToolBinding, make_knowledge_binding
+from agents.tools import SearchArguments, ToolBinding, make_knowledge_binding, TOOL_IDS
 from chat import router as api
 
 
@@ -91,8 +91,8 @@ class RegistryTests(unittest.TestCase):
         rag = registry.resolve(has_knowledge_bases=True)
         self.assertEqual(plain.skills, ())
         self.assertEqual(plain.tool_ids, frozenset())
-        self.assertEqual(rag.skills, ("knowledge-qa",))
-        self.assertEqual(rag.tool_ids, frozenset({"knowledge.search"}))
+        self.assertEqual(rag.skills, ("knowledge-qa", "context-reading"))
+        self.assertEqual(rag.tool_ids, frozenset({"knowledge.search", "sources.read"}))
         self.assertNotIn("<skill", plain.instructions)
         self.assertIn("knowledge-qa", rag.instructions)
 
@@ -101,7 +101,7 @@ class RegistryTests(unittest.TestCase):
             shutil.copytree(RESOURCES, root, dirs_exist_ok=True)
             skill = Path(root) / "skills/knowledge-qa/SKILL.md"
             skill.write_text("Unique changed skill instruction", encoding="utf-8")
-            agent = AgentRegistry(Path(root), {"knowledge.search"}).resolve(has_knowledge_bases=True)
+            agent = AgentRegistry(Path(root), TOOL_IDS).resolve(has_knowledge_bases=True)
             messages = build_context(agent, [api.ChatMessage(role="user", content="hello")])
             self.assertIn("Unique changed skill instruction", messages[0].content)
 
@@ -113,7 +113,7 @@ class RegistryTests(unittest.TestCase):
                 data = json.loads(file.read_text(encoding="utf-8"))
                 file.write_text(json.dumps({**data, **changes}), encoding="utf-8")
                 with self.assertRaises((ValueError, ValidationError)):
-                    AgentRegistry(Path(root), {"knowledge.search"})
+                    AgentRegistry(Path(root), TOOL_IDS)
 
     def test_prompt_path_escape_fails(self):
         with scratch_directory() as parent:
@@ -126,7 +126,7 @@ class RegistryTests(unittest.TestCase):
             data["prompt_file"] = "../outside.md"
             file.write_text(json.dumps(data), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "escapes"):
-                AgentRegistry(root, {"knowledge.search"})
+                AgentRegistry(root, TOOL_IDS)
 
     def test_history_keeps_completed_turn_and_current_question(self):
         messages = [api.ChatMessage(role=role, content=f"{i}-{role}")
@@ -138,11 +138,17 @@ class RegistryTests(unittest.TestCase):
             self.assertEqual([m.content for m in context[1:]], ["2-user", "2-assistant", "current"])
 
 
+def search_agent():
+    agent = get_registry().resolve(has_knowledge_bases=True)
+    return replace(agent, tool_ids=frozenset({"knowledge.search"}))
+
+
 class RunnerTests(unittest.IsolatedAsyncioTestCase):
     async def test_real_knowledge_adapter_owns_session_and_binds_resource_scope(self):
         factory = MagicMock()
         local_db = factory.return_value.__enter__.return_value
-        chunk = SimpleNamespace(cite_label="[CITE-8]")
+        from chat.tools import RetrievedChunk
+        chunk = RetrievedChunk("[CITE-8]", 1, 0, "test.txt", 3, "source", 0.1)
         search = MagicMock()
         search.invoke.return_value = "[CITE-8] source"
         retrieved = []
@@ -154,7 +160,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(retrieved, [chunk])
         self.assertEqual(result.status, "ok")
         with self.assertRaises(ValidationError):
-            await tool.execute({"query": "x", "kb_ids": [999]})
+            await tool.execute({"query": "x", "unregistered_argument": [999]})
 
     async def test_plain_streaming_and_nonstreaming_agree(self):
         for streaming in (False, True):
@@ -169,24 +175,24 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         for streaming in (False, True):
             model = FakeModel([tool_response(), AIMessage(content="Answer [CITE-1]")])
             tool = binding()
-            agent = get_registry().resolve(has_knowledge_bases=True)
+            agent = search_agent()
             events = [e async for e in AgentRunner(agent, model, [tool]).events(
                 build_context(agent, [api.ChatMessage(role="user", content="topic")]), streaming=streaming)]
-            tool.execute.assert_awaited_once_with({"query": "topic", "mode": "vector", "top_n": 0})
+            tool.execute.assert_awaited_once_with({"query": "topic", "mode": "vector", "top_n": 0, "kb_ids": None})
             self.assertIn("知识库问答", model.inputs[0][0].content)
             self.assertIn("Verified excerpt", model.inputs[1][-2].content)
             self.assertEqual(events[-1].data, "Answer [CITE-1]")
 
     async def test_unregistered_model_tool_is_never_executed(self):
         tool = binding()
-        agent = get_registry().resolve(has_knowledge_bases=True)
+        agent = search_agent()
         runner = AgentRunner(agent, FakeModel([tool_response("shell")]), [tool])
         with self.assertRaisesRegex(ValueError, "unregistered"):
             _ = [e async for e in runner.events(build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
         tool.execute.assert_not_awaited()
 
     async def test_tool_error_is_data_and_final_answer_can_explain_failure(self):
-        agent = get_registry().resolve(has_knowledge_bases=True)
+        agent = search_agent()
         tool = binding(AsyncMock(side_effect=RuntimeError("backend unavailable")))
         model = FakeModel([tool_response(), AIMessage(content="检索失败")])
         events = [e async for e in AgentRunner(agent, model, [tool]).events(
@@ -195,7 +201,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[-1].data, "检索失败")
 
     async def test_native_loop_caps_model_calls_and_reuses_tool_result(self):
-        base = get_registry().resolve(has_knowledge_bases=True)
+        base = search_agent()
         agent = replace(base, definition=base.definition.model_copy(update={"tool_protocol": "native"}))
         tool = binding()
         model = FakeModel([tool_response(), tool_response(), AIMessage(content="done")])
@@ -205,26 +211,26 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(model.inputs), 3)
 
     async def test_context_checked_again_after_tool_result(self):
-        agent = get_registry().resolve(has_knowledge_bases=True)
+        agent = search_agent()
         tool = binding(AsyncMock(return_value="x" * 20000))
-        model = FakeModel([tool_response(), AIMessage(content="should not be called")])
-        with self.assertRaises(ContextLimitError):
-            _ = [e async for e in AgentRunner(agent, model, [tool], context_length=5).events(
-                build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
-        self.assertEqual(len(model.inputs), 1)
+        model = FakeModel([tool_response(), AIMessage(content="bounded answer")])
+        events = [e async for e in AgentRunner(agent, model, [tool], context_length=5).events(
+            build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
+        self.assertEqual(events[-1].data, "bounded answer")
+        self.assertLess(sum(len(str(m.content)) for m in model.inputs[-1]), 9000)
 
     async def test_cancellation_does_not_run_following_model_call(self):
         started = asyncio.Event()
         async def wait(args):
             started.set()
             await asyncio.Event().wait()
-        agent = get_registry().resolve(has_knowledge_bases=True)
+        agent = search_agent()
         model = FakeModel([tool_response(), AIMessage(content="late")])
         async def consume():
             return [e async for e in AgentRunner(agent, model, [binding(wait)]).events(
                 build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
         task = asyncio.create_task(consume())
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await task
@@ -233,18 +239,18 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
     async def test_declared_binding_fallback_retrieves_before_answer(self):
         model = FakeModel([AIMessage(content="answer")])
         model.bind_tools = MagicMock(side_effect=NotImplementedError())
-        agent = get_registry().resolve(has_knowledge_bases=True)
+        agent = search_agent()
         tool = binding()
         _ = [e async for e in AgentRunner(agent, model, [tool]).events(
             build_context(agent, [api.ChatMessage(role="user", content="question")]), streaming=False)]
-        tool.execute.assert_awaited_once_with({"query": "question", "mode": "vector", "top_n": 0})
+        tool.execute.assert_awaited_once_with({"query": "question", "mode": "vector", "top_n": 0, "kb_ids": None})
         self.assertIn("Verified excerpt", model.inputs[0][-2].content)
 
     async def test_invalid_tool_arguments_never_reach_implementation(self):
-        agent = get_registry().resolve(has_knowledge_bases=True)
+        agent = search_agent()
         tool = binding()
         response = AIMessage(content="", tool_calls=[{
-            "name": "search_knowledge_base", "args": {"query": "x", "kb_ids": [999]}, "id": "bad"}])
+            "name": "search_knowledge_base", "args": {"query": "x", "unregistered_argument": [999]}, "id": "bad"}])
         model = FakeModel([response, AIMessage(content="invalid arguments")])
         _ = [e async for e in AgentRunner(agent, model, [tool]).events(
             build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
@@ -252,7 +258,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"status": "error"', model.inputs[-1][-2].content)
 
     async def test_execution_budget_forces_last_call_without_tools(self):
-        base = get_registry().resolve(has_knowledge_bases=True)
+        base = search_agent()
         definition = base.definition.model_copy(update={
             "tool_protocol": "native", "limits": base.definition.limits.model_copy(update={"max_model_calls": 2})})
         agent = replace(base, definition=definition)
@@ -261,6 +267,20 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             _ = [e async for e in AgentRunner(agent, model, [binding()]).events(
                 build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
         self.assertEqual(len(model.inputs), 2)
+
+    async def test_total_retrieval_budget_is_shared_and_reserves_final_answer(self):
+        base = search_agent()
+        agent = replace(base, definition=base.definition.model_copy(update={
+            "limits": base.definition.limits.model_copy(update={"max_tool_result_chars": 2000})}))
+        tool = binding(AsyncMock(return_value='"large evidence" ' * 2000))
+        model = FakeModel([tool_response(), AIMessage(content="bounded final answer")])
+        events = [e async for e in AgentRunner(agent, model, [tool]).events(
+            build_context(agent, [api.ChatMessage(role="user", content="hi")]), streaming=False)]
+        self.assertEqual(events[-1].data, "bounded final answer")
+        block = model.inputs[-1][-2].content
+        self.assertLessEqual(len(block), 2100)
+        self.assertIn('"truncated": true', block)
+        tool.execute.assert_awaited_once()
 
 
 class RouteTests(unittest.IsolatedAsyncioTestCase):
@@ -311,6 +331,17 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[ERROR] disk full", body)
         self.assertNotIn("[REPLACE]", body)
         self.db.rollback.assert_called_once()
+
+    async def test_unset_request_cap_does_not_silently_limit_setting_to_five(self):
+        self.db.get.side_effect = lambda cls, key: (
+            SimpleNamespace(value="12") if cls is api.Setting and key == "chat_max_tool_rounds" else None)
+        payload = api.RAGChatRequest(kb_ids=[7], messages=[api.ChatMessage(role="user", content="hi")])
+        self.db.get.side_effect = lambda cls, key: (
+            SimpleNamespace(value="12") if cls is api.Setting and key == "chat_max_tool_rounds" else
+            None if cls is api.Setting else SimpleNamespace(id=key))
+        with patch.object(api, "build_llm", return_value=FakeModel([])):
+            _, runner, _, _ = api._prepare(1, payload, self.db, rag=True)
+        self.assertEqual(runner.tool_budget, 12)
 
 
 class HttpIntegrationTests(unittest.TestCase):

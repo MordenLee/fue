@@ -61,15 +61,27 @@ class AgentRunner:
     async def _events(self, messages, streaming):
         limits = self.agent.definition.limits
         working, base = list(messages), list(messages)
+        # Conservative character budget (<= one token/character for this allowance).
+        # All tool calls share this cap, including JSON envelopes and later page reads.
+        base_chars = sum(len(str(m.content)) for m in base)
+        self.result_budget = min(limits.max_tool_result_chars,
+                                 max(0, int(self.context_length * 1000 * 0.8) - base_chars - 2048)
+                                 if self.context_length else limits.max_tool_result_chars)
+        self.used_result_chars = 0
         tools_enabled = bool(self.tools)
         calls, cache, evidence = 0, {}, []
+        from memory import service as memory_service
+        deletion_epoch = memory_service.DELETION_EPOCH
         try:
             bound = self.llm.bind_tools([t.schema for t in self.tools.values()]) if tools_enabled else self.llm
         except (NotImplementedError, AttributeError):
             # Declared fallback is valid only for one unambiguous read-only tool.
-            if self.agent.definition.unsupported_tool_mode != "retrieve_then_answer" or len(self.tools) != 1:
+            retrieval = [t for t in self.tools.values() if t.id == "knowledge.search"]
+            if not retrieval and len(self.tools) == 1:
+                retrieval = list(self.tools.values())
+            if self.agent.definition.unsupported_tool_mode != "retrieve_then_answer" or len(retrieval) != 1:
                 raise ValueError("Model cannot bind the required tools")
-            tool = next(iter(self.tools.values()))
+            tool = retrieval[0]
             query = next((content_to_text(m.content) for m in reversed(base) if m.type == "human"), "")
             async for event in self._execute(tool, {"query": query}, "fallback", cache):
                 yield event
@@ -80,8 +92,16 @@ class AgentRunner:
             bound = self.llm
 
         for model_index in range(limits.max_model_calls):
+            if memory_service.DELETION_EPOCH != deletion_epoch:
+                # Drop transient tool caches/evidence when source history is deleted.
+                evidence.clear()
+                cache.clear()
+                working = list(base)
+                self.used_result_chars = 0
+                deletion_epoch = memory_service.DELETION_EPOCH
             # Always reserve the last model call for an answer without tools.
-            may_use_tools = tools_enabled and calls < self.tool_budget and model_index < limits.max_model_calls - 1
+            may_use_tools = (tools_enabled and calls < self.tool_budget and model_index < limits.max_model_calls - 1
+                             and self.result_budget - self.used_result_chars > 512)
             model = bound if may_use_tools else self.llm
             check_context(working, self.context_length)
             response = None
@@ -110,26 +130,29 @@ class AgentRunner:
                 raise ValueError("Model requested tools after tool execution was disabled")
             yield AgentEvent("clear")
             results = []
+            executed_calls = []
             for tc in tool_calls:
                 name, args = tc["name"], tc["args"]
                 if name not in self.tools:
                     raise ValueError(f"Model requested an unregistered tool: {name}")
-                if calls >= self.tool_budget:
-                    raise ValueError("Tool call budget exhausted")
+                if calls >= self.tool_budget or self.result_budget - self.used_result_chars <= 512:
+                    # Do not execute excess calls; let the reserved final model call converge.
+                    break
                 calls += 1
+                executed_calls.append(tc)
                 async for event in self._execute(self.tools[name], args, tc.get("id", str(calls)), cache):
                     yield event
                     if event.type == "tool_result":
                         evidence.append(event.data)
                         results.append(ToolMessage(content=json.dumps(event.data, ensure_ascii=False), tool_call_id=tc["id"]))
-            if self.agent.definition.tool_protocol == "evidence_synthesis":
+            if self.agent.definition.tool_protocol in {"evidence_synthesis", "iterative_evidence"}:
                 # Compatibility for reasoning providers: never replay incomplete tool history.
                 working = self._evidence_context(base, evidence)
-                tools_enabled = False
+                tools_enabled = self.agent.definition.tool_protocol == "iterative_evidence"
             else:
                 # Convert streamed chunks to a proper assistant message for native replay.
                 from langchain_core.messages import AIMessage
-                working.extend([AIMessage(content=response.content, tool_calls=tool_calls), *results])
+                working.extend([AIMessage(content=response.content, tool_calls=executed_calls), *results])
         raise ValueError("Model call budget exhausted")
 
     async def _execute(self, tool, args, call_id, cache):
@@ -137,14 +160,17 @@ class AgentRunner:
         try:
             args = tool.schema.args_schema.model_validate(args).model_dump()
         except Exception as exc:
-            yield AgentEvent("tool_result", {"call_id": call_id, "tool": tool.id,
-                                            "status": "error", "content": f"Invalid tool arguments: {exc}"})
+            result = {"call_id": call_id, "tool": tool.id, "status": "error",
+                      "content": "Invalid tool arguments; use the registered parameter schema."}
+            self.used_result_chars += len(json.dumps(result)) + 2
+            yield AgentEvent("tool_result", result)
             return
         key = (tool.id, json.dumps(args, sort_keys=True, ensure_ascii=False))
         if key not in cache:
             try:
                 async with asyncio.timeout(self.agent.definition.limits.tool_timeout_seconds):
-                    output = await tool.execute(args)
+                    from memory.mcp import call_in_process
+                    output = await call_in_process(tool, args)
                 result = output if isinstance(output, ToolOutput) else ToolOutput(output)
                 text = result.content
                 cap = self.agent.definition.limits.max_tool_result_chars
@@ -153,7 +179,23 @@ class AgentRunner:
             except Exception as exc:
                 cache[key] = {"call_id": call_id, "tool": tool.id, "status": "error",
                               "content": f"Tool execution failed: {exc}"}
-        yield AgentEvent("tool_result", {**cache[key], "call_id": call_id})
+        result = {**cache[key], "call_id": call_id}
+        room = max(0, self.result_budget - self.used_result_chars - 256)
+        original = str(result.get("content", ""))
+        # JSON escaping is included in the budget. Binary search avoids quadratic slicing.
+        lo, hi = 0, min(len(original), room)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if len(json.dumps({**result, "content": original[:mid]}, ensure_ascii=False)) <= room:
+                lo = mid
+            else:
+                hi = mid - 1
+        result["content"] = original[:lo]
+        result["truncated"] = result.get("truncated", False) or lo < len(original)
+        if not lo:
+            result["content"] = "Result omitted: retrieval budget exhausted."
+        self.used_result_chars += len(json.dumps(result, ensure_ascii=False)) + 2
+        yield AgentEvent("tool_result", result)
 
     @staticmethod
     def _evidence_context(base, evidence):

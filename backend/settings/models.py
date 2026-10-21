@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import DateTime, String, Text, func
@@ -51,6 +52,10 @@ DEFAULTS: dict[str, str] = {
     "chat_history_turns": "5",     # number of recent turns to pass to the LLM (0 = unlimited)
     "chat_max_tool_rounds": "5",   # max tool-calling rounds per RAG turn
     "chat_compress_model_id": "",  # chat model ID for compressing old history (empty = disabled)
+    "memory_query_scope": "disabled",
+    "memory_query_mode": "keyword",
+    "knowledge_query_mode": "rag",
+    "memory_embed_model_id": "",
     # --- Cleaner behaviour ---
     "doc_clean_keep_references": "false",  # whether to keep reference/bibliography sections during cleaning
     "doc_clean_keep_annotations": "false",  # whether to keep annotation/footnote/endnote sections during cleaning
@@ -64,6 +69,10 @@ DEFAULTS: dict[str, str] = {
 class SettingsOut(BaseModel):
     """Full settings object returned to clients / 完整设置对象。"""
     language: str = Field(examples=["zh"], description="UI language: zh / en")
+    memory_query_scope: Literal["disabled", "7", "30", "360", "all"] = "disabled"
+    memory_query_mode: Literal["keyword", "rag"] = "keyword"
+    knowledge_query_mode: Literal["keyword", "rag"] = "rag"
+    memory_embed_model_id: int | None = None
     embed_max_concurrency: int = Field(
         default=4,
         ge=1,
@@ -178,6 +187,10 @@ class SettingsOut(BaseModel):
 
 class SettingsUpdate(BaseModel):
     """Partial update — only provided fields are changed / 仅更新传入的字段。"""
+    memory_query_scope: Literal["disabled", "7", "30", "360", "all"] | None = None
+    memory_query_mode: Literal["keyword", "rag"] | None = None
+    knowledge_query_mode: Literal["keyword", "rag"] | None = None
+    memory_embed_model_id: int | None = None
     language: str | None = Field(
         default=None,
         pattern=r"^(zh|en)$",

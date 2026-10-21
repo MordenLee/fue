@@ -1,4 +1,8 @@
 export interface SettingsOut {
+  memory_query_scope: 'disabled' | '7' | '30' | '360' | 'all'
+  memory_query_mode: 'keyword' | 'rag'
+  knowledge_query_mode: 'keyword' | 'rag'
+  memory_embed_model_id: number | null
   language: 'zh' | 'en'
   embed_max_concurrency: number
   embed_use_model_qps: boolean
@@ -21,6 +25,10 @@ export interface SettingsOut {
 }
 
 export interface SettingsUpdate {
+  memory_query_scope?: SettingsOut['memory_query_scope']
+  memory_query_mode?: SettingsOut['memory_query_mode']
+  knowledge_query_mode?: SettingsOut['knowledge_query_mode']
+  memory_embed_model_id?: number | null
   language?: 'zh' | 'en'
   embed_max_concurrency?: number
   embed_use_model_qps?: boolean

@@ -225,8 +225,8 @@
     "chat_citation_style_desc": "Controls how references are formatted in chat responses, such as APA, MLA, Chicago, or GB/T 7714",
     "chat_history_turns": "History turns to keep",
     "chat_history_turns_desc": "Number of recent conversation turn pairs to send to the model (0 = unlimited). Lower values reduce context size and help prevent context overflow in long conversations.",
-    "chat_max_tool_rounds": "Max tool call rounds",
-    "chat_max_tool_rounds_desc": "Maximum number of times the model can call the knowledge base search tool per RAG turn (1-20). Lower values speed up responses and reduce token usage.",
+    "chat_max_tool_rounds": "Tool call budget",
+    "chat_max_tool_rounds_desc": "Total search and context-reading calls per turn (1-20), also limited by Agent model-call and cumulative retrieval budgets.",
     "chat_compress_model": "Conversation compression model",
     "chat_compress_model_desc": "When history exceeds the retained turns limit, this model compresses old turns into a summary before passing them to context. Leave empty to simply drop old turns.",
     "section_parsing": "Parsing",
@@ -451,5 +451,23 @@
     "type_conference": "Conference Paper",
     "type_website": "Website",
     "type_other": "Other"
+  },
+  "memory": {
+    "scope": "Chat history access",
+    "scope_desc": "Limits Agent history access without changing full log retention.",
+    "scope_disabled": "Disabled",
+    "scope_7": "Last 7 days",
+    "scope_30": "Last 30 days",
+    "scope_360": "Last 360 days",
+    "scope_all": "All history",
+    "chat_mode": "Chat history search mode",
+    "knowledge_mode": "Knowledge search mode",
+    "mode_desc": "Keyword search and context reading remain available with RAG off.",
+    "keyword": "Without RAG (keyword)",
+    "rag": "With RAG (keyword + semantic)",
+    "embedding": "Chat memory embedding model",
+    "embedding_desc": "Indexes complete QA pairs. Falls back to the default embedding model; keyword search works without an embedding model.",
+    "status": "QA pairs {pairs} ? Keyword indexed {keyword} ? Vector indexed {vector} ? Index errors {errors}",
+    "retry": "Retry failed indexing"
   }
 }

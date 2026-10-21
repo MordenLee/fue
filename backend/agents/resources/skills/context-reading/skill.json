@@ -1,0 +1,5 @@
+{
+  "schema_version": 1, "id": "context-reading", "version": "1.0.0", "name": "通用上下文阅读",
+  "instructions_file": "SKILL.md", "required_tools": ["sources.read"],
+  "required_resources": ["readable_sources"], "execution_policy": "bounded_retrieval", "citation_policy": "verified_evidence_only"
+}

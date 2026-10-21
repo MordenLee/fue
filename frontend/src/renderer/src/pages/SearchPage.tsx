@@ -44,18 +44,26 @@ export function SearchPage() {
     setOptions(prev => ({ ...prev, kbIds: prev.kbIds.filter(x => x !== id) }))
   }
   const hybridKeywordFloorTopK = settings?.hybrid_keyword_floor_top_k ?? 10
+  useEffect(() => {
+    if (settings?.knowledge_query_mode === 'keyword') {
+      setOptions((prev) => ({ ...prev, searchType: 'keyword', rerank: false }))
+    }
+  }, [settings?.knowledge_query_mode])
   // ---------------------
 
   const handleSearch = useCallback(async (query: string) => {
-    const searchedResults = await search(query, options, hybridKeywordFloorTopK)
+    const effectiveOptions = settings?.knowledge_query_mode === 'keyword'
+      ? { ...options, searchType: 'keyword' as const, rerank: false }
+      : options
+    const searchedResults = await search(query, effectiveOptions, hybridKeywordFloorTopK)
     setHasSearched(true)
     const item: SearchHistoryItem = {
       id: generateId(),
       query,
       kbIds: options.kbIds,
-      searchType: options.searchType,
+      searchType: effectiveOptions.searchType,
       topK: options.topK,
-      rerank: options.rerank,
+      rerank: effectiveOptions.rerank,
       diversity: options.diversity,
       resultCount: searchedResults?.length ?? 0,
       createdAt: new Date().toISOString(),
@@ -71,7 +79,7 @@ export function SearchPage() {
       return next
     })
     setSelectedId(item.id)
-  }, [hybridKeywordFloorTopK, options, search])
+  }, [hybridKeywordFloorTopK, options, search, settings?.knowledge_query_mode])
 
   const handleSelectHistory = useCallback((item: SearchHistoryItem) => {
     setSelectedId(item.id)

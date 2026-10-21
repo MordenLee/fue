@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { RotateCcw, Save, Languages, Database, FileText, Bot } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { FormField } from '../components/ui/FormField'
@@ -33,6 +33,14 @@ export function SettingsPage() {
   const [form, setForm] = useState<SettingsUpdate>({})
   const [saving, setSaving] = useState(false)
   const [showReset, setShowReset] = useState(false)
+  const [memoryStatus, setMemoryStatus] = useState<Awaited<ReturnType<typeof settingsService.memoryStatus>> | null>(null)
+  useEffect(() => {
+    if (activeSection !== 'chat') return
+    const refresh = () => { void settingsService.memoryStatus().then(setMemoryStatus).catch(() => {}) }
+    refresh()
+    const timer = window.setInterval(refresh, 5000)
+    return () => window.clearInterval(timer)
+  }, [activeSection])
 
   const current = { ...settings, ...form }
 
@@ -160,6 +168,27 @@ export function SettingsPage() {
                   />
                 </FormField>
 
+                <FormField label={t('memory.scope')} description={t('memory.scope_desc')}>
+                  <Select value={current.memory_query_scope ?? 'disabled'}
+                    onValueChange={(v) => handleChange({memory_query_scope: v as SettingsUpdate['memory_query_scope']})}
+                    options={['disabled', '7', '30', '360', 'all'].map((value) => ({value, label: t(`memory.scope_${value}`)}))} />
+                </FormField>
+                <FormField label={t('memory.chat_mode')} description={t('memory.mode_desc')}>
+                  <Select value={current.memory_query_mode ?? 'keyword'}
+                    onValueChange={(v) => handleChange({memory_query_mode: v as SettingsUpdate['memory_query_mode']})}
+                    options={[{value:'keyword', label:t('memory.keyword')}, {value:'rag', label:t('memory.rag')}]} />
+                </FormField>
+                <FormField label={t('memory.embedding')} description={t('memory.embedding_desc')}>
+                  <ModelSelector value={current.memory_embed_model_id ?? null}
+                    onChange={(v) => handleChange({memory_embed_model_id: v})} modelType="embedding" />
+                </FormField>
+                {memoryStatus && <div className="text-xs text-neutral-500 space-y-2">
+                  <p>{t('memory.status', {pairs: memoryStatus.pairs, keyword: memoryStatus.keyword_indexed, vector: memoryStatus.vector_indexed, errors: memoryStatus.vector_errors})}</p>
+                  <Button variant="secondary" size="sm" onClick={() => {
+                    void settingsService.retryMemory().then(() => settingsService.memoryStatus()).then(setMemoryStatus).catch(() => toast.error(t('common.save_failed')))
+                  }}>{t('memory.retry')}</Button>
+                </div>}
+
                 <FormField label={t('settings_page.chat_max_tool_rounds')} description={t('settings_page.chat_max_tool_rounds_desc')}>
                   <NumberInput
                     className="w-28"
@@ -185,6 +214,11 @@ export function SettingsPage() {
             <section>
               <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-6">{t('settings_page.section_search')}</h2>
               <div className="space-y-5">
+                <FormField label={t('memory.knowledge_mode')} description={t('memory.mode_desc')}>
+                  <Select value={current.knowledge_query_mode ?? 'rag'}
+                    onValueChange={(v) => handleChange({knowledge_query_mode: v as SettingsUpdate['knowledge_query_mode']})}
+                    options={[{value:'keyword', label:t('memory.keyword')}, {value:'rag', label:t('memory.rag')}]} />
+                </FormField>
                 <FormField label={t('settings_page.single_search_top_k')} description={t('settings_page.single_search_top_k_desc')}>
                   <NumberInput className="w-28" value={current.rag_top_k ?? 5} onChange={(v) => handleChange({ rag_top_k: v })} min={1} max={50} />
                 </FormField>

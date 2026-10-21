@@ -418,8 +418,9 @@ export function ChatPage() {
       // Find the assistant message and the preceding user message
       const msgIndex = messages.findIndex(m => m.id === msgId)
       if (msgIndex < 0) return
-      // Delete the assistant message
-      await removeMessage(msgId)
+      // Keep the old answer in the revision log while replacing its live branch.
+      await conversationsService.prepareRegeneration(selectedId, msgId)
+      await loadMessages()
       // Build messages up to the one before this assistant message
       const historyMessages = messages.slice(0, msgIndex)
       const allMsgs: ChatMessageType[] = []
@@ -445,7 +446,7 @@ export function ChatPage() {
     } catch {
       toast.error(t('chat.regenerate_failed'))
     }
-  }, [selectedId, modelId, kbIds, messages, citationStyle, removeMessage, streaming, streamOutputEnabled, toast, t])
+  }, [selectedId, modelId, kbIds, messages, citationStyle, loadMessages, streaming, streamOutputEnabled, toast, t])
 
   const handleClearMessages = useCallback(async () => {
     try {

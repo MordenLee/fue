@@ -71,14 +71,7 @@ export function useMessages(conversationId: number | null) {
     if (!conversationId) return
     // Update the message content on the backend
     await conversationsService.updateMessage(conversationId, msgId, newContent)
-    // Delete all messages after this one
-    const msg = messages.find(m => m.id === msgId)
-    if (msg) {
-      const after = messages.filter(m => m.position > msg.position)
-      for (const a of after) {
-        await conversationsService.removeMessage(conversationId, a.id)
-      }
-    }
+    // Backend atomically records revisions and truncates the live answer chain.
     // Reload to get fresh state
     await load()
   }, [conversationId, messages, load])

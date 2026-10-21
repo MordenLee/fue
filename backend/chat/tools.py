@@ -81,7 +81,7 @@ def _keyword_sort_key(text: str, terms: list[str]) -> tuple[int, int, int, int]:
     return (-distinct_hits, -total_hits, first_pos, len(text))
 
 
-def make_search_tool(kb_ids: list[int], db: Session, initial_cite_num: int = 1, *, raise_on_error: bool = False):
+def make_search_tool(kb_ids: list[int], db: Session, initial_cite_num: int = 1, *, raise_on_error: bool = False, allow_rerank: bool = True):
     """Create a knowledge-base search tool and a shared retrieved-chunks list.
 
     Parameters
@@ -285,13 +285,10 @@ def make_search_tool(kb_ids: list[int], db: Session, initial_cite_num: int = 1, 
             raw_chunks = raw_chunks[:effective_k]
 
         # Optional reranking (uses the first KB that has a rerank model)
-        raw_chunks = _maybe_rerank(
-            query,
-            raw_chunks,
-            kb_ids,
-            db,
-            preserve_order=mode in ("keyword", "hybrid"),
-        )
+        if allow_rerank:
+            raw_chunks = _maybe_rerank(
+                query, raw_chunks, kb_ids, db, preserve_order=mode in ("keyword", "hybrid"),
+            )
 
         # Global cap: hybrid mode has a larger cap so keyword floor can take effect.
         final_cap = effective_k + hybrid_kw_floor if mode == "hybrid" else effective_k

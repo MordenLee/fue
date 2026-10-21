@@ -42,11 +42,14 @@ export const conversationsService = {
   appendMessages: (convId: number, messages: { role: string; content: string }[]) =>
     request<MessageOut[]>(`/api/conversations/${convId}/messages`, {
       method: 'POST',
-      body: JSON.stringify(messages)
+      body: JSON.stringify({ messages })
     }),
 
   removeMessage: (convId: number, msgId: number) =>
     request<void>(`/api/conversations/${convId}/messages/${msgId}`, { method: 'DELETE' }),
+
+  prepareRegeneration: (convId: number, msgId: number) =>
+    request<void>(`/api/conversations/${convId}/messages/${msgId}/regenerate`, { method: 'POST' }),
 
   removeMessageAndAfter: (convId: number, msgId: number) =>
     request<void>(`/api/conversations/${convId}/messages/${msgId}/after`, { method: 'DELETE' }),

@@ -226,7 +226,7 @@
     "chat_history_turns": "保留对话轮数",
     "chat_history_turns_desc": "发送给模型的最近 N 轮对话历史（0 = 不限制）。设置较小值可减少上下文占用，缓解多轮对话上下文溢出问题。",
     "chat_max_tool_rounds": "工具调用次数限制",
-    "chat_max_tool_rounds_desc": "每次 RAG 对话中，模型最多调用知识库搜索工具的次数（1-20）。降低此值可加快响应速度，减少 token 消耗。",
+    "chat_max_tool_rounds_desc": "每轮所有搜索与上下文阅读共享的工具调用总次数（1-20）。同时受 Agent 模型调用预算和累计检索预算约束。",
     "chat_compress_model": "对话压缩模型",
     "chat_compress_model_desc": "当历史对话超出保留轮数时，用该模型将旧内容压缩为摘要后再传入上下文。留空则直接丢弃旧轮次。",
     "section_parsing": "文档解析",
@@ -451,5 +451,23 @@
     "type_conference": "会议论文",
     "type_website": "网站",
     "type_other": "其他"
+  },
+  "memory": {
+    "scope": "聊天历史查询范围",
+    "scope_desc": "控制 Agent 可阅读的历史范围，不影响完整日志保存。",
+    "scope_disabled": "禁止查询",
+    "scope_7": "7天内",
+    "scope_30": "30天内",
+    "scope_360": "360天内",
+    "scope_all": "所有历史",
+    "chat_mode": "聊天历史查询模式",
+    "knowledge_mode": "知识库查询模式",
+    "mode_desc": "关闭 RAG 后仍可关键词搜索和翻阅原文、前后上下文。",
+    "keyword": "不含 RAG（关键词）",
+    "rag": "含 RAG（关键词＋语义）",
+    "embedding": "聊天记忆嵌入模型",
+    "embedding_desc": "完整问答对用于向量索引。未指定时使用默认嵌入模型；没有模型时关键词搜索仍可使用。",
+    "status": "问答对 {pairs} · 关键词索引 {keyword} · 向量索引 {vector} · 索引异常 {errors}",
+    "retry": "重试失败索引"
   }
 }

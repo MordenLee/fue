@@ -3,7 +3,7 @@
 from providers.models import AIModel
 
 
-def build_embedder(ai_model: AIModel):
+def build_embedder(ai_model: AIModel, *, timeout_seconds: float | None = None):
     """根据供应商接口类型构建 LangChain Embeddings 实例。"""
     provider = ai_model.provider
     interface = provider.interface_type
@@ -11,6 +11,8 @@ def build_embedder(ai_model: AIModel):
     if interface in ("openai", "openai_compatible"):
         from langchain_openai import OpenAIEmbeddings
         kwargs: dict = {"model": ai_model.api_name}
+        if timeout_seconds is not None:
+            kwargs.update(request_timeout=timeout_seconds, max_retries=1)
         if provider.api_key:
             kwargs["api_key"] = provider.api_key
         if provider.api_base_url:

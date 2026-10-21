@@ -508,6 +508,9 @@ def search_knowledge_base(
         return []
 
     from settings.models import DEFAULTS, Setting
+    query_mode = db.get(Setting, "knowledge_query_mode")
+    if query_mode and query_mode.value == "keyword":
+        search_type, rerank = "keyword", False
     if top_k is not None:
         effective_top_k = top_k
     else:

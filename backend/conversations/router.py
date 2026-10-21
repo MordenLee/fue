@@ -1,12 +1,14 @@
 """CRUD API for Conversations and Messages."""
 
 from __future__ import annotations
+from functools import wraps
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from database import get_db
+from memory.service import commit_chat, record_conversation, INDEX_LOCK
 from conversations.models import (
     Conversation,
     ConversationCreate,
@@ -21,6 +23,15 @@ from conversations.models import (
 )
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
+
+
+def chat_mutation(function):
+    """Acquire the memory lock before starting a SQLite write, on the route thread."""
+    @wraps(function)
+    def run(*args, **kwargs):
+        with INDEX_LOCK:
+            return function(*args, **kwargs)
+    return run
 
 
 # ---------------------------------------------------------------------------
@@ -191,18 +202,21 @@ def update_conversation(
 
 
 @router.delete("/{conv_id}", status_code=status.HTTP_204_NO_CONTENT)
+@chat_mutation
 def delete_conversation(conv_id: int, db: Session = Depends(get_db)):
     """Delete a conversation and all its messages."""
     conv = _get_conv(conv_id, db)
     db.delete(conv)
-    db.commit()
+    commit_chat(db, conv_id, forget_conversation=True)
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
+@chat_mutation
 def clear_all_conversations(db: Session = Depends(get_db)):
     """Delete ALL conversations (irreversible). Used for a clean-slate reset."""
     db.query(Conversation).delete()
-    db.commit()
+    db.query(Message).delete()
+    commit_chat(db, forget_all=True)
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +240,7 @@ def list_messages(conv_id: int, db: Session = Depends(get_db)):
     response_model=list[MessageOut],
     status_code=status.HTTP_201_CREATED,
 )
+@chat_mutation
 def append_messages(
     conv_id: int,
     payload: MessageAppend,
@@ -261,13 +276,14 @@ def append_messages(
     # Bump conversation.updated_at so it floats to the top of the list
     conv.updated_at = func.now()  # type: ignore[assignment]
 
-    db.commit()
+    commit_chat(db, conv_id, action="append")
     for msg in created:
         db.refresh(msg)
     return created
 
 
 @router.delete("/{conv_id}/messages/{msg_id}", status_code=status.HTTP_204_NO_CONTENT)
+@chat_mutation
 def delete_message(conv_id: int, msg_id: int, db: Session = Depends(get_db)):
     """Delete a single message. Positions of remaining messages are unchanged."""
     _get_conv(conv_id, db)  # 404 guard
@@ -277,10 +293,11 @@ def delete_message(conv_id: int, msg_id: int, db: Session = Depends(get_db)):
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
     db.delete(msg)
-    db.commit()
+    commit_chat(db, conv_id, forget_ids=[msg_id], action="delete")
 
 
 @router.delete("/{conv_id}/messages/{msg_id}/after", status_code=status.HTTP_204_NO_CONTENT)
+@chat_mutation
 def delete_message_and_after(conv_id: int, msg_id: int, db: Session = Depends(get_db)):
     """Delete a message and all messages after it (by position)."""
     _get_conv(conv_id, db)
@@ -289,14 +306,17 @@ def delete_message_and_after(conv_id: int, msg_id: int, db: Session = Depends(ge
     ).first()
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
+    removed_ids = [m.id for m in db.query(Message).filter(
+        Message.conversation_id == conv_id, Message.position >= msg.position).all()]
     db.query(Message).filter(
         Message.conversation_id == conv_id,
         Message.position >= msg.position,
     ).delete()
-    db.commit()
+    commit_chat(db, conv_id, forget_ids=removed_ids, action="delete")
 
 
 @router.patch("/{conv_id}/messages/{msg_id}", response_model=MessageOut)
+@chat_mutation
 def update_message(conv_id: int, msg_id: int, payload: dict, db: Session = Depends(get_db)):
     """Update the content of a single message."""
     _get_conv(conv_id, db)
@@ -305,16 +325,37 @@ def update_message(conv_id: int, msg_id: int, payload: dict, db: Session = Depen
     ).first()
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
+    record_conversation(db, conv_id, "before_edit")
     if "content" in payload:
+        if not isinstance(payload["content"], str) or not payload["content"].strip():
+            raise HTTPException(status_code=400, detail="Content must be a non-empty string")
         msg.content = payload["content"]
-    db.commit()
+        db.query(Message).filter(Message.conversation_id == conv_id, Message.position > msg.position).delete(synchronize_session=False)
+        db.get(Conversation, conv_id).summary = None
+    commit_chat(db, conv_id, action="edit")
     db.refresh(msg)
     return msg
 
 
 @router.delete("/{conv_id}/messages", status_code=status.HTTP_204_NO_CONTENT)
+@chat_mutation
 def clear_messages(conv_id: int, db: Session = Depends(get_db)):
     """Delete all messages in a conversation (keeps the conversation record)."""
-    _get_conv(conv_id, db)
+    conv = _get_conv(conv_id, db)
+    conv.summary = None
     db.query(Message).filter(Message.conversation_id == conv_id).delete()
-    db.commit()
+    commit_chat(db, conv_id, forget_conversation=True)
+
+
+@router.post("/{conv_id}/messages/{msg_id}/regenerate", status_code=status.HTTP_204_NO_CONTENT)
+@chat_mutation
+def prepare_regeneration(conv_id: int, msg_id: int, db: Session = Depends(get_db)):
+    """Keep old versions in the log; remove the old answer chain from live context."""
+    conv = _get_conv(conv_id, db)
+    msg = db.query(Message).filter_by(conversation_id=conv_id, id=msg_id).first()
+    if msg is None or msg.role != "assistant":
+        raise HTTPException(status_code=400, detail="Select an assistant answer to regenerate")
+    record_conversation(db, conv_id, "before_regenerate")
+    db.query(Message).filter(Message.conversation_id == conv_id, Message.position >= msg.position).delete(synchronize_session=False)
+    conv.summary = None
+    commit_chat(db, conv_id, action="regenerate")
