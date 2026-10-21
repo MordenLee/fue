@@ -3,13 +3,12 @@
 Supported formats
 -----------------
 Plain text  : .txt  .md  .csv  .json
-PDF         : .pdf   — engines: pdfplumber (default) | pymupdf | pypdf
+PDF         : .pdf   — engines: pdfplumber (default) | pypdf
 Word        : .docx  — engines: python-docx (default) | markitdown
               .doc   — markitdown (tries python-docx as fallback)
 PowerPoint  : .pptx
 Excel       : .xlsx  .xls
 Web / markup: .html  .htm  .xml
-E-book      : .epub
 Rich text   : .rtf
 OpenDocument: .odt
 """
@@ -31,7 +30,6 @@ SUPPORTED_EXTENSIONS = {
     ".csv",
     ".html", ".htm",
     ".xml",
-    ".epub",
     ".rtf",
     ".odt",
     ".json",
@@ -48,7 +46,7 @@ def parse_file(
     Parameters
     ----------
     file_path:   Absolute path to the file on disk.
-    pdf_parser:  "pdfplumber" | "pymupdf" | "pypdf"
+    pdf_parser:  "pdfplumber" | "pypdf"
     docx_parser: "python-docx" | "markitdown"
     """
     p = Path(file_path)
@@ -76,8 +74,6 @@ def parse_file(
         return _parse_xlsx(p)
     if suffix == ".xls":
         return _parse_xls(p)
-    if suffix == ".epub":
-        return _parse_epub(p)
     if suffix == ".rtf":
         return _parse_rtf(p)
     if suffix == ".odt":
@@ -91,8 +87,6 @@ def parse_file(
 # ---------------------------------------------------------------------------
 
 def _parse_pdf(path: Path, engine: str) -> str:
-    if engine == "pymupdf":
-        return _pdf_pymupdf(path)
     if engine == "pypdf":
         return _pdf_pypdf(path)
     return _pdf_pdfplumber(path)  # default: pdfplumber
@@ -107,16 +101,6 @@ def _pdf_pdfplumber(path: Path) -> str:
             text = page.extract_text() or ""
             if text.strip():
                 parts.append(text)
-    return "\n".join(parts)
-
-
-def _pdf_pymupdf(path: Path) -> str:
-    import fitz  # PyMuPDF
-
-    parts: list[str] = []
-    with fitz.open(str(path)) as doc:
-        for page in doc:
-            parts.append(page.get_text())
     return "\n".join(parts)
 
 
@@ -252,25 +236,6 @@ def _parse_xml(path: Path) -> str:
     root = tree.getroot()
     texts = [t.strip() for t in root.itertext() if t.strip()]
     return "\n".join(texts)
-
-
-# ---------------------------------------------------------------------------
-# EPUB
-# ---------------------------------------------------------------------------
-
-def _parse_epub(path: Path) -> str:
-    import ebooklib
-    from ebooklib import epub
-    from bs4 import BeautifulSoup
-
-    book = epub.read_epub(str(path), options={"ignore_ncx": True})
-    parts: list[str] = []
-    for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
-        soup = BeautifulSoup(item.get_content(), "lxml")
-        text = soup.get_text(separator="\n", strip=True)
-        if text:
-            parts.append(text)
-    return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------

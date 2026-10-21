@@ -6,7 +6,14 @@ const api = {
   getBackendUrl: (): Promise<string> => ipcRenderer.invoke('get-backend-url'),
   setModalOverlay: (dimmed: boolean): void => ipcRenderer.send('titlebar-modal-overlay', dimmed),
   openFileDialog: (options?: { filters?: { name: string; extensions: string[] }[]; title?: string }): Promise<string[]> =>
-    ipcRenderer.invoke('dialog-open-files', options ?? {})
+    ipcRenderer.invoke('dialog-open-files', options ?? {}),
+  writingList: (): Promise<{ id: string; title: string; updatedAt: string }[]> => ipcRenderer.invoke('writing-list'),
+  writingRead: (id: string): Promise<{ id: string; title: string; content: unknown; updatedAt: string }> => ipcRenderer.invoke('writing-read', id),
+  writingCreate: (): Promise<{ id: string; title: string; content: unknown; updatedAt: string }> => ipcRenderer.invoke('writing-create'),
+  writingSave: (document: { id: string; title: string; content: unknown }): Promise<{ updatedAt: string }> =>
+    ipcRenderer.invoke('writing-save', document),
+  writingSaveSync: (document: { id: string; title: string; content: unknown }): { updatedAt?: string; error?: string } =>
+    ipcRenderer.sendSync('writing-save-sync', document)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

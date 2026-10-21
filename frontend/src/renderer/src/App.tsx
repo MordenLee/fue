@@ -6,6 +6,7 @@ import { SearchPage } from './pages/SearchPage'
 import { KnowledgePage } from './pages/KnowledgePage'
 import { ProvidersPage } from './pages/ProvidersPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { WritingPage } from './pages/WritingPage'
 
 function App(): React.JSX.Element {
   return (
@@ -21,6 +22,7 @@ function App(): React.JSX.Element {
               <Route path="/" element={<ChatPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/knowledge" element={<KnowledgePage />} />
+              <Route path="/write" element={<WritingPage />} />
               <Route path="/providers" element={<ProvidersPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />

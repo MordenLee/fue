@@ -2,6 +2,15 @@ import { useState, useEffect, useCallback } from 'react'
 import { conversationsService } from '../services/conversations'
 import type { MessageOut } from '../types/conversation'
 
+function normalizeMessageContent(content: string): string {
+  // Align comparison across formats like [CITE-1] and [1] to avoid
+  // false negatives when matching local temp assistant messages to DB rows.
+  return content
+    .replace(/\[CITE-(\d+)\]/g, '[$1]')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function useMessages(conversationId: number | null) {
   const [messages, setMessages] = useState<MessageOut[]>([])
   const [loading, setLoading] = useState(false)
@@ -20,9 +29,18 @@ export function useMessages(conversationId: number | null) {
       setLoading(true)
       const data = await conversationsService.getMessages(conversationId)
       if (retainLocal) {
-        const inDb = data.some(
-          (m) => m.role === retainLocal.role && m.content === retainLocal.content
-        )
+        const normalizedRetain = normalizeMessageContent(retainLocal.content)
+        const inDb = data.some((m) => {
+          if (m.role !== retainLocal.role) return false
+
+          // Temp local message ids are negative. For them, matching by position is
+          // the most stable way to identify the persisted DB record.
+          if (retainLocal.id <= 0 && m.position === retainLocal.position) {
+            return true
+          }
+
+          return normalizeMessageContent(m.content) === normalizedRetain
+        })
         setMessages(inDb ? data : [...data, retainLocal])
       } else {
         setMessages(data)

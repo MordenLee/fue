@@ -6,6 +6,7 @@ import { join } from 'path'
 import { spawn, type ChildProcess } from 'child_process'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { registerWritingDocuments } from './writingDocuments'
 
 // ─── File logging (production only) ───
 let _logFile: string | null = null
@@ -350,6 +351,7 @@ function createWindow(): void {
       sandbox: false
     }
   })
+  registerWritingDocuments(mainWindow)
 
   // Update title bar overlay and window background when theme changes (Windows only)
   if (process.platform === 'win32') {

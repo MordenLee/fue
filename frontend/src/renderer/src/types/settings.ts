@@ -6,7 +6,7 @@ export interface SettingsOut {
   rag_top_k: number
   hybrid_keyword_floor_top_k: number
   default_embed_model_id: number | null
-  pdf_parser: 'pdfplumber' | 'pymupdf' | 'pypdf'
+  pdf_parser: 'pdfplumber' | 'pypdf'
   docx_parser: 'python-docx' | 'markitdown'
   doc_clean_model_id: number | null
   chat_summary_model_id: number | null

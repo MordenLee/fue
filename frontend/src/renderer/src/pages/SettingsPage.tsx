@@ -211,7 +211,6 @@ export function SettingsPage() {
                     onValueChange={(v) => handleChange({ pdf_parser: v as SettingsUpdate['pdf_parser'] })}
                     options={[
                       { label: 'pdfplumber', value: 'pdfplumber' },
-                      { label: 'PyMuPDF', value: 'pymupdf' },
                       { label: 'PyPDF', value: 'pypdf' }
                     ]}
                   />

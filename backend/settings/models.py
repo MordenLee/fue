@@ -37,7 +37,7 @@ DEFAULTS: dict[str, str] = {
     "embed_use_model_qps": "false",  # whether to derive embedding concurrency from embedding model qps
     "kb_index_max_workers": "4",  # max document-level indexing workers for batch add/reindex
     "default_embed_model_id": "",  # empty string = no default; store as numeric string when set
-    "pdf_parser": "pdfplumber",    # "pdfplumber" | "pymupdf" | "pypdf"
+    "pdf_parser": "pdfplumber",    # "pdfplumber" | "pypdf"
     "docx_parser": "python-docx",  # "python-docx" | "markitdown"
     "rag_top_k": "5",              # default number of chunks retrieved per RAG query
     "hybrid_keyword_floor_top_k": "10",  # hybrid mode: guaranteed keyword chunk budget
@@ -90,8 +90,8 @@ class SettingsOut(BaseModel):
     )
     pdf_parser: str = Field(
         default="pdfplumber",
-        pattern=r"^(pdfplumber|pymupdf|pypdf)$",
-        description="PDF parsing engine: pdfplumber (default) | pymupdf | pypdf",
+        pattern=r"^(pdfplumber|pypdf)$",
+        description="PDF parsing engine: pdfplumber (default) | pypdf",
         examples=["pdfplumber"],
     )
     docx_parser: str = Field(
@@ -224,9 +224,9 @@ class SettingsUpdate(BaseModel):
     )
     pdf_parser: str | None = Field(
         default=None,
-        pattern=r"^(pdfplumber|pymupdf|pypdf)$",
-        description="PDF parsing engine: pdfplumber | pymupdf | pypdf",
-        examples=["pymupdf"],
+        pattern=r"^(pdfplumber|pypdf)$",
+        description="PDF parsing engine: pdfplumber | pypdf",
+        examples=["pypdf"],
     )
     docx_parser: str | None = Field(
         default=None,

@@ -8,11 +8,12 @@ interface ResizablePanelProps {
   side?: 'left' | 'right'
   className?: string
   storageKey?: string
+  resizeHandleClassName?: string
 }
 
 export function ResizablePanel({
   children, defaultWidth, minWidth = 150, maxWidth = 600,
-  side = 'left', className = '', storageKey
+  side = 'left', className = '', storageKey, resizeHandleClassName = ''
 }: ResizablePanelProps) {
   const [width, setWidth] = useState(() => {
     if (storageKey) {
@@ -57,9 +58,12 @@ export function ResizablePanel({
       {children}
       <div
         onMouseDown={onMouseDown}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="拖动调整宽度"
         className={`absolute top-0 h-full w-1 cursor-col-resize z-10
           hover:bg-blue-500/50 active:bg-blue-500/70 transition-colors
-          ${side === 'left' ? 'right-0' : 'left-0'}`}
+          ${side === 'left' ? 'right-0' : 'left-0'} ${resizeHandleClassName}`}
       />
     </div>
   )

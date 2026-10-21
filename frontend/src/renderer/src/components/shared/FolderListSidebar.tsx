@@ -42,13 +42,14 @@ interface FolderListSidebarProps<T extends { id: string | number }> {
   onMoveToFolder?: (itemId: string | number, folderId: string | null) => void
   /** Called when unfoldered items are reordered */
   onReorder?: (activeId: string | number, overId: string | number) => void
+  draggable?: boolean
 }
 
 /* ------------------------------------------------------------------ */
 /* Draggable item (used both inside folders and in unfoldered list)    */
 /* ------------------------------------------------------------------ */
 function DraggableItem<T extends { id: string | number }>({
-  item, selectedId, onSelect, renderItem, getContextMenuItems, indented
+  item, selectedId, onSelect, renderItem, getContextMenuItems, indented, draggable = true
 }: {
   item: T
   selectedId: string | number | null
@@ -56,10 +57,12 @@ function DraggableItem<T extends { id: string | number }>({
   renderItem: (item: T) => ReactNode
   getContextMenuItems: (item: T) => ContextMenuItem[]
   indented?: boolean
+  draggable?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
-    data: { type: 'item', item }
+    data: { type: 'item', item },
+    disabled: !draggable
   })
 
   const style = {
@@ -79,14 +82,14 @@ function DraggableItem<T extends { id: string | number }>({
               ? 'bg-blue-600/10 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400'
               : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200/60 dark:hover:bg-white/5'}`}
         >
-          <span
+          {draggable && <span
             {...attributes}
             {...listeners}
             className="flex items-center shrink-0 cursor-grab active:cursor-grabbing mr-1 text-neutral-400 dark:text-neutral-500"
             onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-3.5 w-3.5" />
-          </span>
+          </span>}
           <span className="flex-1 min-w-0">{renderItem(item)}</span>
         </button>
       </ContextMenu>
@@ -158,7 +161,7 @@ export function FolderListSidebar<T extends { id: string | number }>({
   title, items, folders, selectedId, onSelect, onCreateNew, onSearch,
   renderItem, createLabel, searchPlaceholder,
   getItemFolder, getContextMenuItems, getFolderContextMenuItems,
-  onCreateFolder, headerActions, onMoveToFolder, onReorder
+  onCreateFolder, headerActions, onMoveToFolder, onReorder, draggable = true
 }: FolderListSidebarProps<T>) {
   const [search, setSearch] = useState('')
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set(folders.map((f) => f.id)))
@@ -350,6 +353,7 @@ export function FolderListSidebar<T extends { id: string | number }>({
                         renderItem={renderItem}
                         getContextMenuItems={getContextMenuItems}
                         indented
+                        draggable={draggable}
                       />
                     ))}
                   </DroppableFolder>
@@ -365,6 +369,7 @@ export function FolderListSidebar<T extends { id: string | number }>({
                   onSelect={onSelect}
                   renderItem={renderItem}
                   getContextMenuItems={getContextMenuItems}
+                  draggable={draggable}
                 />
               ))}
             </SortableContext>
