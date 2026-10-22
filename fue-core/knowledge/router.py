@@ -3,9 +3,6 @@
 import json
 import logging
 import re
-from collections import defaultdict
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
@@ -179,199 +176,47 @@ def create_knowledge_base(
 # ============================= Export / Import =============================
 @router.get("/{kb_id}/export")
 def export_knowledge_base(kb_id: int, db: Session = Depends(get_db)):
-    """Export a knowledge base (metadata + all chunk vectors) as a downloadable JSON file.
-    导出知识库（元数据 + 所有切片向量）为 JSON 文件。"""
+    from knowledge.transfer import MAX_BYTES, export_package
+    from knowledge.chroma import get_chroma_client
     kb = _get_kb(kb_id, db)
-
-    embed_model = db.get(AIModel, kb.embed_model_id)
-    if not embed_model:
-        raise HTTPException(
-            status_code=409,
-            detail="The embedding model linked to this knowledge base no longer exists. Re-link a valid model first.",
-        )
-
-    raw = _get_all_chunks_for_export(kb.collection_name or "")
-    ids_list   = raw.get("ids") or []
-    docs_list  = raw.get("documents") or []
-    metas_list = raw.get("metadatas") or []
-    embs_list  = raw.get("embeddings") or []
-
-    chunks = [
-        {
-            "chroma_id":         chroma_id,
-            "original_filename": meta.get("original_filename", ""),
-            "chunk_index":       meta.get("chunk_index", i),
-            "content":           content,
-            "embedding":         emb,
-        }
-        for i, (chroma_id, content, meta, emb)
-        in enumerate(zip(ids_list, docs_list, metas_list, embs_list))
-    ]
-
-    payload = {
-        "format_version": "1.0",
-        "exported_at":    datetime.now(timezone.utc).isoformat(),
-        "kb_name":        kb.name,
-        "kb_description": kb.description,
-        "chunk_size":     kb.chunk_size,
-        "chunk_overlap":  kb.chunk_overlap,
-        "embed_model_info": {
-            "api_name":       embed_model.api_name,
-            "interface_type": embed_model.provider.interface_type,
-            "display_name":   embed_model.display_name,
-        },
-        "chunks": chunks,
-    }
-
-    safe_name = kb.name.replace(" ", "_")[:40]
-    filename = f"kb_{kb_id}_{safe_name}.json"
-    return Response(
-        content=json.dumps(payload, ensure_ascii=False),
-        media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    model = db.get(AIModel, kb.embed_model_id)
+    if not model:
+        raise HTTPException(409, "Embedding model no longer exists")
+    client = get_chroma_client()
+    # Do not create or mutate an index during export.
+    names = {c.name for c in client.list_collections()}
+    collection = client.get_collection(kb.collection_name) if kb.collection_name in names else None
+    payload = export_package(kb, model, collection)
+    content = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode('utf-8')
+    if len(content) > MAX_BYTES:
+        raise HTTPException(413, '知识库 JSON 超过 256 MiB，请拆分知识库后导出。')
+    return Response(content=content,
+                    media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="fue-kb-{kb_id}.json"'})
 
 
 @router.post("/import", response_model=KBImportResult, status_code=status.HTTP_201_CREATED)
-async def import_knowledge_base(
+def import_knowledge_base(
     file: UploadFile,
-    embed_model_id: int = Form(..., description="本地 embedding 模型 ID，应与导出时使用的模型一致"),
-    kb_name: str | None = Form(default=None, description="覆盖导入后知识库名称（留空则使用原名）"),
+    embed_model_id: int = Form(...),
+    kb_name: str | None = Form(default=None),
+    confirm_unverified: bool = Form(default=False),
     db: Session = Depends(get_db),
 ):
-    """Import a previously exported knowledge base from a JSON file.
-
-    The caller must specify which of their local embedding models corresponds to
-    the one used during export.  The server enforces that the model type is
-    'embedding' and warns when the ``api_name`` differs from the exported value
-    (which would indicate potentially incompatible vector spaces).
-
-    Pre-computed vectors are inserted directly into ChromaDB — no re-embedding.
-    """
-    # 1. Validate target embedding model
-    embed_model = db.get(AIModel, embed_model_id)
-    if not embed_model:
-        raise HTTPException(status_code=404, detail="Embedding model not found")
-    if embed_model.model_type != "embedding":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Model type is '{embed_model.model_type}', not an embedding model",
-        )
-
-    # 2. Parse JSON file
-    raw_bytes = await file.read()
-    try:
-        data = json.loads(raw_bytes)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}")
-
-    if data.get("format_version") != "1.0":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported export format version: {data.get('format_version')!r}",
-        )
-
-    # 3. Model compatibility check (soft — warn only, do not block)
-    warnings: list[str] = []
-    exported_info = data.get("embed_model_info", {})
-    if exported_info.get("api_name") != embed_model.api_name:
-        warnings.append(
-            f"Model mismatch: file was exported with '{exported_info.get('api_name')}' "
-            f"but you selected '{embed_model.api_name}'. "
-            "Search results will be incorrect if these models produce incompatible vector spaces."
-        )
-
-    # 4. Validate chunks
-    chunks: list[dict] = data.get("chunks", [])
-    if not chunks:
-        raise HTTPException(status_code=400, detail="Export file contains no chunks")
-
-    dims = {len(c["embedding"]) for c in chunks if isinstance(c.get("embedding"), list)}
-    if not dims:
-        raise HTTPException(status_code=400, detail="Chunks are missing embedding vectors")
-    if len(dims) > 1:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Inconsistent embedding dimensions in export file: {dims}",
-        )
-
-    # 5. Create KnowledgeBase record
-    new_name = (kb_name or "").strip() or data.get("kb_name", "Imported KB")
-    kb = KnowledgeBase(
-        name=new_name,
-        description=data.get("kb_description"),
-        embed_model_id=embed_model_id,
-        chunk_size=int(data.get("chunk_size", 500)),
-        chunk_overlap=int(data.get("chunk_overlap", 50)),
-    )
-    db.add(kb)
-    db.flush()
-    kb.collection_name = f"{COLLECTION_PREFIX}{kb.id}"
-    db.flush()
-
-    # 6. Create one DocumentFile per unique filename
-    now = datetime.now(timezone.utc)
-    file_chunks: dict[str, list[dict]] = defaultdict(list)
-    for chunk in chunks:
-        file_chunks[chunk.get("original_filename") or "unknown"].append(chunk)
-
-    doc_map: dict[str, int] = {}  # original_filename → document_file_id
-    for original_filename, fc_list in file_chunks.items():
-        file_ext = Path(original_filename).suffix.lstrip(".") or "txt"
-        doc = DocumentFile(
-            knowledge_base_id=kb.id,
-            original_filename=original_filename,
-            file_path="<imported>",   # no file on disk
-            file_type=file_ext,
-            file_size=0,
-            status="indexed",
-            chunk_count=len(fc_list),
-            indexed_at=now,
-        )
-        db.add(doc)
-        db.flush()
-        doc_map[original_filename] = doc.id
-
-    db.commit()
-    db.refresh(kb)
-
-    # 7. Bulk-write chunks + pre-computed vectors into ChromaDB
-    collection = _get_collection(kb.collection_name)
-    chroma_ids:   list[str]         = []
-    chroma_docs:  list[str]         = []
-    chroma_embs:  list[list[float]] = []
-    chroma_metas: list[dict]        = []
-
-    for chunk in chunks:
-        fn     = chunk.get("original_filename") or "unknown"
-        doc_id = doc_map[fn]
-        cidx   = int(chunk.get("chunk_index", 0))
-        chroma_ids.append(f"imported_kb{kb.id}_doc{doc_id}_chunk{cidx}")
-        chroma_docs.append(chunk.get("content") or "")
-        chroma_embs.append(chunk["embedding"])
-        chroma_metas.append({
-            "document_file_id":  doc_id,
-            "knowledge_base_id": kb.id,
-            "original_filename": fn,
-            "chunk_index":       cidx,
-        })
-
-    # ChromaDB recommends batching large inserts
-    _BATCH = 500
-    for i in range(0, len(chroma_ids), _BATCH):
-        collection.add(
-            ids=chroma_ids[i: i + _BATCH],
-            embeddings=chroma_embs[i: i + _BATCH],
-            documents=chroma_docs[i: i + _BATCH],
-            metadatas=chroma_metas[i: i + _BATCH],
-        )
-
-    return KBImportResult(
-        knowledge_base=KnowledgeBaseOut(**_to_out(kb)),
-        chunks_imported=len(chroma_ids),
-        documents_created=len(doc_map),
-        warnings=warnings,
-    )
+    from knowledge.transfer import MAX_BYTES, decode, import_package
+    from knowledge.chroma import get_chroma_client
+    _validate_embed_model(db, embed_model_id)
+    raw = file.file.read(MAX_BYTES + 1)
+    if len(raw) > MAX_BYTES:
+        raise HTTPException(413, "Knowledge-base JSON exceeds 256 MiB")
+    package = decode(raw)
+    kb, count = import_package(package, db.get(AIModel, embed_model_id), kb_name, db,
+                               get_chroma_client(), confirm_unverified)
+    warnings = []
+    if not package.profile_verified:
+        warnings.append("旧索引的模型来源由用户确认，未通过历史记录验证。")
+    return KBImportResult(knowledge_base=KnowledgeBaseOut(**_to_out(kb)),
+                          chunks_imported=count, documents_created=len(package.documents), warnings=warnings)
 
 
 @router.get("/{kb_id}", response_model=KnowledgeBaseOut)
@@ -390,6 +235,11 @@ def update_knowledge_base(
     record = _get_kb(kb_id, db)
     if payload.embed_model_id is not None:
         _validate_embed_model(db, payload.embed_model_id)
+        if payload.embed_model_id != record.embed_model_id and any(d.chunk_count for d in record.documents):
+            from knowledge.transfer import profile
+            previous = db.get(AIModel, record.embed_model_id)
+            if not previous or profile(previous) != profile(db.get(AIModel, payload.embed_model_id)):
+                raise HTTPException(409, '现有索引与新嵌入模型不兼容，请新建知识库后重新索引。')
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(record, field, value)
     db.commit()

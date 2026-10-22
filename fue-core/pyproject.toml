@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fue-core"
-version = "1.0.11"
+version = "2.0.0"
 description = "FUE local knowledge, conversation memory and research runtime"
 requires-python = ">=3.11"
 dynamic = ["dependencies"]

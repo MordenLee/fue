@@ -173,6 +173,17 @@ def index_document(db: Session, document_file_id: int) -> None:
     db.commit()
 
     try:
+        # Reject a changed embedding space before any paid cleaning/embedding call.
+        from knowledge.transfer import PROFILE_KEY, profile
+        import json
+        index_model = db.get(AIModel, kb.embed_model_id)
+        if not index_model:
+            raise ValueError('Embedding model no longer exists')
+        collection = get_or_create_collection(kb.collection_name)
+        metadata = collection.metadata or {}
+        fingerprint = profile(index_model)
+        if metadata.get(PROFILE_KEY) and json.loads(metadata[PROFILE_KEY]) != fingerprint:
+            raise ValueError('Embedding configuration differs from the existing index')
         # 1. Parse file
         pdf_parser, docx_parser = _get_parser_config(db)
         text = parse_file(doc.file_path, pdf_parser=pdf_parser, docx_parser=docx_parser)
@@ -274,6 +285,13 @@ def index_document(db: Session, document_file_id: int) -> None:
 
         # 7. Store into ChromaDB collection
         collection = get_or_create_collection(kb.collection_name)
+        metadata = collection.metadata or {}
+        fingerprint = profile(embed_model)
+        if metadata.get(PROFILE_KEY) and json.loads(metadata[PROFILE_KEY]) != fingerprint:
+            raise ValueError('Embedding configuration differs from the existing index')
+        if not metadata.get(PROFILE_KEY) and collection.count() == 0:
+            collection.modify(metadata={**metadata, PROFILE_KEY: json.dumps(fingerprint),
+                                        'fue_profile_verified': True})
         ids = [f"doc{doc.id}_chunk{i}" for i in range(len(chunks))]
         metadatas = [
             {

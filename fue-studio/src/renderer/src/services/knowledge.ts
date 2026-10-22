@@ -31,16 +31,17 @@ export const knowledgeService = {
   exportKB: async (id: number): Promise<Blob> => {
     const baseUrl = await waitForBackend()
     const res = await fetch(`${baseUrl}/api/knowledge-bases/${id}/export`)
-    if (!res.ok) throw new Error('Export failed')
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Export failed')
     return res.blob()
   },
 
-  importKB: (file: File, embedModelId: number, name?: string) => {
+  importKB: (file: File, embedModelId: number, name?: string, confirmUnverified = false) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('embed_model_id', String(embedModelId))
-    if (name) formData.append('name', name)
-    return request<KnowledgeBaseOut>('/api/knowledge-bases/import', {
+    if (name) formData.append('kb_name', name)
+    formData.append('confirm_unverified', String(confirmUnverified))
+    return request<{ knowledge_base: KnowledgeBaseOut; chunks_imported: number; documents_created: number; warnings: string[] }>('/api/knowledge-bases/import', {
       method: 'POST',
       body: formData
     })

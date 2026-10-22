@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { MessageSquare, Search, Library, Plug, Settings, Sun, Moon, FilePenLine } from 'lucide-react'
+import { MessageSquare, Search, Library, Plug, Settings, Sun, Moon } from 'lucide-react'
 import { NavButton } from '../ui/NavButton'
 import { useSettings } from '../../contexts/SettingsContext'
 import { useI18n } from '../../i18n'
@@ -7,7 +7,6 @@ import { useI18n } from '../../i18n'
 const topNavItems = [
   { to: '/', icon: MessageSquare, key: 'nav.chat' },
   { to: '/search', icon: Search, key: 'nav.search' },
-  { to: '/write', icon: FilePenLine, key: 'nav.write' },
   { to: '/knowledge', icon: Library, key: 'nav.knowledge' }
 ]
 

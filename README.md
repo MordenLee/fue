@@ -4,9 +4,9 @@ FUE 是一个基于 Electron、React、TypeScript 和 FastAPI 的桌面 AI 工�
 
 ## 当前版本
 
-当前正式版为 **v1.0.11**。下载请前往 [GitHub Releases](https://github.com/MordenLee/fue/releases/tag/v1.0.11)，更新与当前限制见 [发布说明](docs/releases/1.0.11.md)。
+当前源码版本为 **v2.0.0**，更新与当前限制见 [2.0.0 更新说明](docs/releases/2.0.0.md)。本次同步源码及版本标签；历史安装包请查看 [GitHub Releases](https://github.com/MordenLee/fue/releases)，1.0.11 安装包不包含本次重构。
 
-本次 1.0.11 同版本更新增加记忆管理：材料处理状态、限长 summary.md、压缩记录、精确回读及用量展示；工作记忆默认关闭，需在对话设置中启用。请重新下载安装包获取更新。
+2.0.0 将底层拆分为 Core、Studio、Skill，并增加携带向量的知识库 JSON 导入导出；迁移直接复用已有文本、引用和向量，不调用模型。写作入口暂时隐藏，修复 Windows 后台 Core 启动时多弹出终端的问题。使用方式见 [知识库迁移说明](docs/design/knowledge-base-transfer.md)。
 
 架构文档：[当前聊天记忆与 MCP](docs/design/conversation-memory.md)、[长对话工作记忆 v2 设计](docs/design/working-context.md)、[v2 实施清单](docs/plans/working-context-v2.md)。具体启用、真实模型验证与已知限制见 [记忆管理说明](docs/validation/working-context-2026-10-21.md)。
 
@@ -17,11 +17,11 @@ FUE 是一个基于 Electron、React、TypeScript 和 FastAPI 的桌面 AI 工�
 - 知识库文档管理、检索增强问答与引用展示。
 - 中英文界面、明暗主题及相关设置。
 
-本版新增可配置的 Agent/Skill 执行体系、聊天问答对记忆索引、历史检索与相邻上下文阅读，并修复设置选项的勾选图标排版。同版本补充了工作记忆与按需压缩。写作编辑器为现有原型；多人协作、完整运行恢复、精确费用估算与多级压缩仍待完善。
+本版保留可配置的 Agent/Skill 执行体系、聊天问答对记忆索引、历史检索、相邻上下文阅读与按需压缩。工作记忆默认关闭，需在对话设置中启用。写作原型代码和数据保留，页面不显示；多人协作、完整运行恢复、精确费用估算与多级压缩仍待完善。
 
 ## 后续开发方向
 
-拆分以 [FUE 2.0 架构与拆分决策](docs/design/fue-architecture-v2.md) 为准。本地重构分支已拆成 Core、Studio、Skill，增加独立接入、双身份和空闲回收；实现范围与验证见 [拆分验收记录](docs/validation/core-split-2026-10-21.md)。当前 GitHub 正式版仍为 1.0.11，未发布本次重构。下述写作与协作能力留到下个大版本。
+拆分以 [FUE 2.0 架构与拆分决策](docs/design/fue-architecture-v2.md) 为准。2.0.0 已拆成 Core、Studio、Skill，增加独立接入、双身份和空闲回收；实现范围与验证见 [拆分验收记录](docs/validation/core-split-2026-10-21.md)。下述写作与协作能力留到后续版本。
 
 ### 1. 将所有 Chat 对话内容建设为可编辑、可追溯的知识库
 

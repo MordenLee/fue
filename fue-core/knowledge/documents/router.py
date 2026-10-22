@@ -295,6 +295,9 @@ def reindex_document(
     kb = _get_kb(kb_id, db)
     doc = _get_doc(kb_id, doc_id, db)
 
+    if doc.file_path == '<imported>':
+        raise HTTPException(409, '导入的知识库不含原始附件。请先重新上传原文件；现有索引已保留。')
+
     if kb.collection_name:
         _delete_document_chunks(kb.collection_name, doc.id)
 
@@ -388,6 +391,8 @@ def batch_reindex_documents(
         .filter(DocumentFile.knowledge_base_id == kb_id, DocumentFile.id.in_(payload.doc_ids))
         .all()
     )
+    if any(doc.file_path == '<imported>' for doc in docs):
+        raise HTTPException(409, '所选文档含导入记录，请先重新上传原文件；现有索引已保留。')
     for doc in docs:
         if kb.collection_name:
             _delete_document_chunks(kb.collection_name, doc.id)

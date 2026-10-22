@@ -32,6 +32,16 @@ function python(): string {
   return existsSync(local) ? local : process.platform === 'win32' ? 'python' : 'python3'
 }
 
+function backgroundPython(): string {
+  const executable = python()
+  // A detached console executable can create a Windows Terminal window even
+  // with windowsHide. Keep python.exe for CLI connection hints and use the
+  // windowless interpreter only for the independent background Core.
+  return process.platform === 'win32'
+    ? executable.replace(/python(?:\.exe)?$/i, 'pythonw.exe')
+    : executable
+}
+
 function call(info: Discovery, path: string, body?: object): Promise<Record<string, unknown>> {
   return new Promise((resolveResult, reject) => {
     const data = body === undefined ? undefined : JSON.stringify(body)
@@ -91,7 +101,7 @@ async function connectOrStart(): Promise<number> {
   const pythonHome = join(process.resourcesPath, 'python')
   const args = [join(componentDir(), 'main.py'), '--data-dir', root]
   if (!existsSync(join(root, 'app.db'))) args.push('--init')
-  const child = spawn(python(), args, {
+  const child = spawn(backgroundPython(), args, {
     cwd: componentDir(), detached: true, windowsHide: true, stdio: ['ignore', log, log],
     env: { ...process.env, APP_BACKEND_DATA_DIR: root, APP_BACKEND_PORT: '0',
       ...(!is.dev ? { PYTHONHOME: pythonHome, PYTHONPATH: '', PYTHONPYCACHEPREFIX: join(app.getPath('userData'), 'pycache') } : {}) }

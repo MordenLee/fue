@@ -5,6 +5,8 @@ import { RenameDialog } from '../components/shared/RenameDialog'
 import { MoveFolderDialog } from '../components/shared/MoveFolderDialog'
 import { KBInfoPanel } from '../components/knowledge/KBInfoPanel'
 import { KBCreateForm } from '../components/knowledge/KBCreateForm'
+import { KBImportForm } from '../components/knowledge/KBImportForm'
+import { Button } from '../components/ui/Button'
 import { DocumentTable } from '../components/knowledge/DocumentTable'
 import { DocumentDetail } from '../components/knowledge/DocumentDetail'
 import { CitationForm } from '../components/knowledge/CitationForm'
@@ -26,13 +28,15 @@ import type { DocumentFileOut, CitationCreate } from '../types/knowledge'
 import { useI18n } from '../i18n'
 
 export function KnowledgePage() {
-  const { knowledgeBases, create, update, remove } = useKnowledgeBases()
+  const { knowledgeBases, create, update, remove, load: reloadKBs } = useKnowledgeBases()
   const { folders, createFolder, renameFolder, deleteFolder } = useFolders('knowledge')
   const toast = useToast()
   const { t } = useI18n()
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'kb' | 'doc'; id: number } | null>(null)
@@ -51,7 +55,8 @@ export function KnowledgePage() {
   const selectedDoc = documents.find((d) => d.id === selectedDocId)
 
   const handleExport = useCallback(async () => {
-    if (!selectedId) return
+    if (!selectedId || exporting) return
+    setExporting(true)
     try {
       const blob = await knowledgeService.exportKB(selectedId)
       const url = URL.createObjectURL(blob)
@@ -61,10 +66,10 @@ export function KnowledgePage() {
       a.click()
       URL.revokeObjectURL(url)
       toast.success(t('knowledge.export_success'))
-    } catch {
-      toast.error(t('knowledge.export_failed'))
-    }
-  }, [selectedId, toast, t])
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('knowledge.export_failed'))
+    } finally { setExporting(false) }
+  }, [selectedId, exporting, toast, t])
 
   const handleAddDocs = useCallback(async () => {
     try {
@@ -240,6 +245,12 @@ export function KnowledgePage() {
 
   return (
     <div className="flex h-full">
+      {showImport && <KBImportForm onClose={() => setShowImport(false)} onImported={async (id, message) => {
+        await reloadKBs()
+        setSelectedId(id)
+        setSelectedDocId(null)
+        toast.success(message)
+      }} />}
       <ResizablePanel defaultWidth={260} minWidth={200} maxWidth={400} storageKey="kb_sidebar_width">
         <FolderListSidebar
           items={knowledgeBases}
@@ -255,6 +266,7 @@ export function KnowledgePage() {
             </div>
           )}
           title={t('nav.knowledge')}
+          headerActions={<Button variant="ghost" size="sm" onClick={() => setShowImport(true)}>{t('knowledge.transfer_import')}</Button>}
           createLabel={t('knowledge.new_kb')}
           searchPlaceholder={t('knowledge.search_kb')}
           getItemFolder={(id) => {
@@ -278,6 +290,7 @@ export function KnowledgePage() {
       {selected ? (
         <div className="flex-1 flex flex-col min-w-0">
           <KBInfoPanel kb={selected} onEdit={openEdit} onExport={handleExport} />
+          {exporting && <p role="status" className="px-4 py-2 text-sm text-neutral-500">{t('knowledge.transfer_exporting')}</p>}
           {selectedDoc && (
             <DocumentDetail
               kbId={selected.id}
