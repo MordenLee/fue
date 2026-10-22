@@ -1,5 +1,5 @@
 import { app, session } from 'electron'
-import { existsSync, mkdirSync, readFileSync, openSync, closeSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, openSync, closeSync } from 'fs'
 import { request } from 'http'
 import { join, resolve } from 'path'
 import { spawn } from 'child_process'
@@ -66,6 +66,10 @@ async function attach(info: Discovery): Promise<number> {
   if (quitting) throw new Error('Studio is closing')
   await call(info, 'lease', { client_id: clientId })
   connection = info
+  // Stable non-secret connection hints survive Core's idle shutdown.
+  const config = join(app.getPath('userData'), 'core-connection.json')
+  writeFileSync(config + '.tmp', JSON.stringify({ core_dir: componentDir(), data_dir: dataDir(), python: python() }))
+  renameSync(config + '.tmp', config)
   if (!heartbeat) {
     heartbeat = setInterval(() => {
       if (connection && !quitting) void call(connection, 'lease', { client_id: clientId }).catch(() => {

@@ -55,6 +55,9 @@ fue-studio/dist*/
 fue-studio/out/
 fue-studio/build/python-runtime/
 fue-studio/.env*
+!fue-studio/.env.example
 .tmp_split_backup.py
 fue-core/build/
 fue-core/*.egg-info/
+.tmp_*.py
+fue-skill/connection.json

@@ -21,7 +21,7 @@ FUE 是一个基于 Electron、React、TypeScript 和 FastAPI 的桌面 AI 工�
 
 ## 后续开发方向
 
-后续拆分以 [FUE 2.0 架构与拆分决策](docs/design/fue-architecture-v2.md) 为准：Core、Studio、Skill 分工，FUE 记忆向外提供，Core 支持双身份与空闲回收。该文档为目标设计，尚未实施；下述写作与协作能力留到下个大版本。
+拆分以 [FUE 2.0 架构与拆分决策](docs/design/fue-architecture-v2.md) 为准。本地重构分支已拆成 Core、Studio、Skill，增加独立接入、双身份和空闲回收；实现范围与验证见 [拆分验收记录](docs/validation/core-split-2026-10-21.md)。当前 GitHub 正式版仍为 1.0.11，未发布本次重构。下述写作与协作能力留到下个大版本。
 
 ### 1. 将所有 Chat 对话内容建设为可编辑、可追溯的知识库
 
@@ -52,7 +52,7 @@ FUE 是一个基于 Electron、React、TypeScript 和 FastAPI 的桌面 AI 工�
 - 明确读写权限、调用范围、错误反馈与版本兼容约定。
 - 外部研究委托由 FUE 执行并保存自身的任务记录；宿主聊天与记忆不反向同步到 FUE。
 
-各平台的具体接入方式将在接口设计阶段确认，目前尚未提供上述平台适配。
+本地接入包见 [FUE Skill](fue-skill/SKILL.md)，安装与连接见其 references。已验证脚本接入；宿主自身的发现与加载行为依其安装机制，不承诺所有客户端相同体验。
 
 ### 4. 优化部分对话逻辑
 
@@ -90,7 +90,9 @@ npm run build
 
 - `fue-studio/`：Electron 主进程、预加载层与 React 界面。
 - `fue-core/`：FastAPI 服务、对话、模型与知识库相关模块。
-- `shared/`：共享配置。
+- `fue-skill/`：外部 Agent 的安装、连接和 Direct/Delegated 使用说明。
+- `backend/`：仅保留原开发数据，忽略进 Git；业务代码已迁入 Core。
+- `contracts/`：Core 对外接口与数据约定；供应商预设随 Core 打包。
 - `i18n/`：中英文翻译资源。
 
 ## 许可
