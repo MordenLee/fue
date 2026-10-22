@@ -136,6 +136,24 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(db.get(ResearchTask,'old').state,'interrupted')
         self.assertFalse(self.manager.running)
 
+    async def test_deleted_library_does_not_prevent_task_cancellation(self):
+        from fue_core.tasks import task_row
+        from fastapi import HTTPException
+        payload = self.payload.model_copy(update={'kb_ids':[99]}).model_dump()
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(core=self.state)))
+        with self.factory() as db:
+            db.add(ResearchTask(id='deleted-source',request_key='deleted-source',fingerprint='x',
+                state='running',payload=payload,events=[],created_at=0))
+            db.commit()
+            self.assertEqual(task_row('deleted-source',request,db).state,'running')
+            self.state.allowed_libraries = []
+            with self.assertRaises(HTTPException): task_row('deleted-source',request,db)
+            self.state.allowed_libraries = [99]
+            self.assertEqual(task_row('deleted-source',request,db).id,'deleted-source')
+        self.manager.cancel('deleted-source')
+        with self.factory() as db:
+            self.assertEqual(db.get(ResearchTask,'deleted-source').state,'cancelled')
+
     async def test_success_persists_result_and_usage_event(self):
         async def research(task_id,payload):
             self.manager.event(task_id,'usage',{'input_tokens':12})

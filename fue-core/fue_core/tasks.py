@@ -202,7 +202,11 @@ def task_row(task_id, request, db):
     row = db.get(ResearchTask, task_id)
     if row is None:
         raise HTTPException(404, "Task not found")
-    scope(db, row.payload["kb_ids"], request.app.state.core.allowed_libraries)
+    # Completed/active tasks remain inspectable and cancellable after a library
+    # is deleted. Authorization depends on the grant, not source existence.
+    allowed = request.app.state.core.allowed_libraries
+    if allowed is not None and not set(row.payload["kb_ids"]) <= set(allowed):
+        raise HTTPException(403, "Task is outside this connection's library scope")
     return row
 
 
