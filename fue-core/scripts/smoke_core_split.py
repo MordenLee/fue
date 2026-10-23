@@ -36,10 +36,10 @@ def main():
         kb = http('/api/knowledge-bases',{'name':'Split synthetic fixture','embed_model_id':embed_id[0]})
         # Seed indexed text locally; original file references remain synthetic.
         os.environ['APP_BACKEND_DATA_DIR'] = str(root)
-        from database import SessionLocal
-        from knowledge.documents.models import DocumentFile
-        from knowledge.chroma import get_chroma_client
-        import providers.models, knowledge.models, conversations.models
+        from fue_core.database import SessionLocal
+        from fue_core.knowledge.documents.models import DocumentFile
+        from fue_core.knowledge.chroma import get_chroma_client
+        import fue_core.providers.models, knowledge.models, conversations.models
         with SessionLocal() as db:
             doc = DocumentFile(knowledge_base_id=kb['id'],original_filename='fixture.txt',file_path='fixture.txt',
                                file_type='txt',file_size=30,status='indexed',chunk_count=2)

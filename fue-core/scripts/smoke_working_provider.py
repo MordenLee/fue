@@ -18,17 +18,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import create_engine
 from sqlalchemy.orm import joinedload, sessionmaker
 from sqlalchemy.pool import StaticPool
-from database import Base, SessionLocal
-from providers.models import AIModel, Provider
-from conversations.models import Conversation, MessageAppend, MessageCreate, Message
-from conversations.router import append_messages
-from settings.models import Setting
-from memory.models import ContextSummary, ContextEvent, ModelUsage, QAPair
-from memory import working
-from agents.runtime import get_registry
-from agents.usage import UsageLedger
-from chat import router as api
-import knowledge
+from fue_core.database import Base, SessionLocal
+from fue_core.providers.models import AIModel, Provider
+from fue_core.conversations.models import Conversation, MessageAppend, MessageCreate, Message
+from fue_core.conversations.router import append_messages
+from fue_core.settings.models import Setting
+from fue_core.memory.models import ContextSummary, ContextEvent, ModelUsage, QAPair
+from fue_core.memory import working
+from fue_core.agents.runtime import get_registry
+from fue_core.agents.usage import UsageLedger
+from fue_core.chat import service as api
+from fue_core.chat.router import router as _registered_chat_router
+from fue_core import knowledge
 
 
 async def main(args):

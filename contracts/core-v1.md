@@ -31,3 +31,19 @@ Evidence IDs bind document identity, indexed timestamp, chunk location and text 
 Task states: queued, running, succeeded, failed, cancelled, interrupted. The current worker does not publish partial success. `request_key` uniquely identifies a submission; mismatched reuse conflicts. Restart never silently replays a paid task.
 
 Health/status polling does not extend idle lifetime. Studio holds a renewable 45-second lease; normal renewal is every 10 seconds. Core exits after 300 seconds without Studio, active work or business activity unless keep-alive is enabled.
+
+## Studio chat executions
+
+These compatibility routes require Studio credentials; Agent credentials remain restricted to `/api/v1/*`.
+
+| Method/path | Meaning |
+| --- | --- |
+| GET `/api/executions?conversation_id=<id>` | Latest 20 executions for a conversation |
+| GET `/api/executions/{run_id}?after=<sequence>` | State, saved result/error and up to 100 events after the cursor |
+| POST `/api/executions/{run_id}/cancel` | Request cancellation of the original execution |
+
+Chat requests accept an optional `request_id`. Reusing it with identical completed input returns the saved result without calling a model; different input or a non-successful original execution returns 409. A new generation needs a new ID. Studio does not automatically retry write/generation requests. SSE retains the existing compatibility format; EOF without `[DONE]` is interrupted, not successful.
+
+Chat states are `running`, `succeeded`, `failed`, `cancelled`, `interrupted`. Explicit cancellation reaches the running coroutine. Disconnects and Core restarts do not automatically replay paid work. Provider work already accepted remotely may still be billed. Deleting source conversations clears saved content and events while retaining a content-free request tombstone.
+
+Chat and research events share `{run_id, sequence, type, data, timestamp}`. Sequence is a global database cursor, not a contiguous per-run counter. Research returns at most 50 events with `last_sequence` and `more_events`; chat callers can continue after the last sequence until an empty page. Legacy research JSON events remain readable. Usage distinguishes provider-reported counts from estimates; budgets apply in both legacy and working-memory chat modes.

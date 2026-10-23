@@ -1,4 +1,19 @@
 {
+  "installation": {
+    "title": "Workspace and Agent access",
+    "description": "Studio and Agents share the same workspace without exporting data. Select the host's supported skills directory to install the Skill.",
+    "workspace": "Current workspace",
+    "development": "Development environment; explicitly register it to share with other entry points.",
+    "skill": "Install or update FUE Skill",
+    "open": "Open existing workspace",
+    "busy": "Checking and configuring…",
+    "installed": "Skill installed at {path}. Reload it as required by the host.",
+    "selected": "Registered {path}. Finish current work, close and reopen Studio. The current session has not switched.",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "pending": "Opens after restart: {path}",
+    "check": "Check Skill connection"
+  },
   "working": {
     "panel": "Working memory and execution",
     "mode": "Long conversation context mode",
@@ -532,5 +547,21 @@
     "embedding_desc": "Indexes complete QA pairs. Falls back to the default embedding model; keyword search works without an embedding model.",
     "status": "QA pairs {pairs} ? Keyword indexed {keyword} ? Vector indexed {vector} ? Index errors {errors}",
     "retry": "Retry failed indexing"
+  },
+  "execution": {
+    "title": "Execution",
+    "running": "Running",
+    "succeeded": "Completed",
+    "cancelled": "Cancelled",
+    "interrupted": "Interrupted",
+    "failed": "Failed",
+    "models": "Model calls",
+    "tools": "Tool calls",
+    "remaining": "Remaining input / output budget",
+    "no_auto_retry": "This panel reads the original execution without calling a model again. Review saved content before sending a new request.",
+    "saved": "View saved answer or partial content",
+    "stop": "Stop execution",
+    "budget_hint": "Budgets apply whether memory compaction is enabled or not.",
+    "awaiting_usage": "Waiting for usage; actual consumption is not yet known."
   }
 }

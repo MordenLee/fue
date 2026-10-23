@@ -221,27 +221,29 @@ export function useStreamingChat(): UseStreamingChatReturn {
       }
 
       const controller = new AbortController()
+      const runId = crypto.randomUUID()
+      setActivity([{ type: 'run_started', run_id: runId }])
       controllerRef.current = controller
 
       ;(async () => {
         try {
           if (options) {
             setIsSearching(true)
-            const res = await ragChat(modelId, messages, options, controller.signal)
+            const res = await ragChat(modelId, messages, options, controller.signal, runId)
             if (controller.signal.aborted || activeRequestIdRef.current !== requestId) return
 
             setCurrentResponse(res.content)
-            setActivity(res.activity ?? [])
+            setActivity([{ type: 'run_started', run_id: res.run_id ?? runId }, ...(res.activity ?? [])])
             const refs = res.references ?? []
             if (refs.length > 0) {
               setCitations({ references: refs, cite_map: {} })
               setRetrievedChunks(normalizeReferenceChunks(refs))
             }
           } else {
-            const res = await chat(modelId, messages, conversationId, controller.signal)
+            const res = await chat(modelId, messages, conversationId, controller.signal, runId)
             if (controller.signal.aborted || activeRequestIdRef.current !== requestId) return
             setCurrentResponse(res.content)
-            setActivity(res.activity ?? [])
+            setActivity([{ type: 'run_started', run_id: res.run_id ?? runId }, ...(res.activity ?? [])])
           }
         } catch (err) {
           if (err instanceof Error && err.name === 'AbortError') return
@@ -267,8 +269,7 @@ export function useStreamingChat(): UseStreamingChatReturn {
     controllerRef.current?.abort()
     controllerRef.current = null
     setIsStreaming(false)
-    setConversationId(null)
-    setStreamModelId(null)
+    setActivity(prev => [...prev, { type: 'cancellation_requested' }])
     setIsSearching(false)
   }, [clearIdleTimer])
 

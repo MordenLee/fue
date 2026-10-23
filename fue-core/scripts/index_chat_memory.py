@@ -13,13 +13,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from database import Base, engine, SessionLocal
-from memory import service
-from memory.models import ChatEvent, QAPair
-from memory.router import status
-from providers.models import AIModel
-from settings.models import Setting
-import knowledge  # Register document models for foreign key resolution.
+from fue_core.database import Base, engine, SessionLocal
+from fue_core.memory import service
+from fue_core.memory.models import ChatEvent, QAPair
+from fue_core.memory.router import status
+from fue_core.providers.models import AIModel
+from fue_core.settings.models import Setting
+from fue_core import knowledge  # Register document models for foreign key resolution.
 
 
 def main():

@@ -51,6 +51,10 @@ fue-core/runtime/
 fue-core/logs/
 fue-core/.env*
 backend/runtime/
+backend/workspace.json
+backend/backups/
+fue-core/workspace.json
+fue-core/backups/
 fue-studio/dist*/
 fue-studio/out/
 fue-studio/build/python-runtime/
@@ -60,4 +64,7 @@ fue-studio/.env*
 fue-core/build/
 fue-core/*.egg-info/
 .tmp_*.py
+artifacts/
+workspaces/
+.fue-workspace.json
 fue-skill/connection.json

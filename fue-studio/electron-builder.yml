@@ -5,6 +5,7 @@ directories:
 files:
   - '!**/.vscode/*'
   - '!dist{,/**/*}'
+  - '!dist-*/**'
   - '!dist-clean/**'
   - '!dist-staging-win/**'
   - '!dist-split/**'
@@ -17,14 +18,23 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 extraResources:
+  - from: ../fue-skill
+    to: fue-skill
+    filter:
+      - '**/*'
+      - '!connection.json'
+      - '!**/__pycache__/**'
+      - '!**/*.pyc'
   - from: ../fue-core
-    to: backend
+    to: core
     filter:
       - '**/*'
       - '!app.db*'
       - '!chroma_data/**'
       - '!working_memory/**'
       - '!runtime/**'
+      - '!workspace.json'
+      - '!backups/**'
       - '!build/**'
       - '!*.egg-info/**'
       - '!venv/**'

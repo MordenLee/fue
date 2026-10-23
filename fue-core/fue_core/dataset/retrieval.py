@@ -128,11 +128,11 @@ def make_search_tool(kb_ids: list[int], db: Session, initial_cite_num: int = 1, 
                    ("what research covers X?"); decrease (e.g. 3) for focused
                    factual lookups.
         """
-        from knowledge.chroma import get_chroma_client
-        from knowledge.models import KnowledgeBase
-        from providers.embeddings import build_embedder
-        from providers.models import AIModel
-        from settings.models import DEFAULTS, Setting
+        from fue_core.knowledge.chroma import get_chroma_client
+        from fue_core.knowledge.models import KnowledgeBase
+        from fue_core.providers.embeddings import build_embedder
+        from fue_core.providers.models import AIModel
+        from fue_core.settings.models import DEFAULTS, Setting
 
         # Resolve effective top_k
         _row = db.get(Setting, "rag_top_k")
@@ -330,9 +330,9 @@ def _maybe_rerank(
     preserve_order: bool = False,
 ) -> list[RetrievedChunk]:
     """Apply reranking if any KB has a rerank_model_id configured."""
-    from knowledge.models import KnowledgeBase
-    from providers.models import AIModel
-    from providers.reranker import build_reranker
+    from fue_core.knowledge.models import KnowledgeBase
+    from fue_core.providers.models import AIModel
+    from fue_core.providers.reranker import build_reranker
 
     rerank_model_id: int | None = None
     for kb_id in kb_ids:

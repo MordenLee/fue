@@ -3,9 +3,9 @@ import asyncio
 from typing import Literal
 from fastapi import APIRouter, Depends, Request, Query, HTTPException
 from pydantic import BaseModel, Field
-from database import get_db, SessionLocal
+from fue_core.database import get_db, SessionLocal
 from fue_core.dataset import service
-from knowledge.documents.models import DocumentFile
+from fue_core.knowledge.documents.models import DocumentFile
 
 router = APIRouter(prefix="/api/v1")
 
@@ -53,7 +53,7 @@ def read(request: Request, ref: str, before: int = Query(0, ge=0, le=3), after: 
 
 @router.get("/dataset/cite")
 def cite(request: Request, document_id: int, style: Literal["apa", "mla", "chicago", "gb_t7714"] = "apa", db=Depends(get_db)):
-    from knowledge.documents.citations import format_citation
+    from fue_core.knowledge.documents.citations import format_citation
     doc = service.document(db, document_id, allowed(request))
     if doc.citation is None:
         raise HTTPException(404, "Bibliographic metadata is unavailable")
@@ -62,8 +62,8 @@ def cite(request: Request, document_id: int, style: Literal["apa", "mla", "chica
 
 @router.post("/memory/search")
 async def memory_search(payload: dict):
-    from agents.tools import HistoryArguments
-    from memory.service import search
+    from fue_core.agents.tools import HistoryArguments
+    from fue_core.memory.service import search
     from pydantic import ValidationError
     try:
         values = HistoryArguments.model_validate(payload).model_dump()
@@ -80,7 +80,7 @@ async def memory_search(payload: dict):
 
 @router.get("/memory/read")
 def memory_read(ref: str, offset: int = Query(0, ge=0), length: int = Query(2000, ge=100, le=4000), db=Depends(get_db)):
-    from memory.working import read_memory
+    from fue_core.memory.working import read_memory
     try:
         return read_memory(db, ref, offset, length)
     except PermissionError as exc:

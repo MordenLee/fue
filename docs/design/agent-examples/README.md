@@ -1,6 +1,6 @@
 # 内置 Agent / Skill 声明样例
 
-这些文件是目标格式样例，目前没有运行时加载器。实现后复制到 `backend/agents/resources/`，保持相同目录结构。
+这些文件保留早期目标格式，供理解设计使用；实际运行时声明与加载器已经实现，以 `fue-core/fue_core/agents/resources/` 和同目录的 `registry.py` 为准。以下“首期”限制属于历史设计，不代表当前工具清单。
 
 ## 路径与字段约束
 

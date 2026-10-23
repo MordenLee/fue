@@ -6,6 +6,8 @@ FUE 是一个基于 Electron、React、TypeScript 和 FastAPI 的桌面 AI 工�
 
 当前源码版本为 **v2.0.0**，更新与当前限制见 [2.0.0 更新说明](docs/releases/2.0.0.md)。本次同步源码及版本标签；历史安装包请查看 [GitHub Releases](https://github.com/MordenLee/fue/releases)，1.0.11 安装包不包含本次重构。
 
+完整重构后的职责、执行管理、数据库迁移和开发工作区见 [实施架构](docs/design/core-studio-skill-implementation.md)。本地新增改动的验证记录不代表 GitHub 安装包已经更新。
+
 2.0.0 将底层拆分为 Core、Studio、Skill，并增加携带向量的知识库 JSON 导入导出；迁移直接复用已有文本、引用和向量，不调用模型。写作入口暂时隐藏，修复 Windows 后台 Core 启动时多弹出终端的问题。使用方式见 [知识库迁移说明](docs/design/knowledge-base-transfer.md)。
 
 架构文档：[当前聊天记忆与 MCP](docs/design/conversation-memory.md)、[长对话工作记忆 v2 设计](docs/design/working-context.md)、[v2 实施清单](docs/plans/working-context-v2.md)。具体启用、真实模型验证与已知限制见 [记忆管理说明](docs/validation/working-context-2026-10-21.md)。
@@ -65,6 +67,8 @@ FUE 是一个基于 Electron、React、TypeScript 和 FastAPI 的桌面 AI 工�
 
 ## 本地开发
 
+安装 Agent 版、后装 Studio 复用已有知识库，以及桌面端安装 Skill 的步骤见 [安装与资料库管理](docs/design/installation-and-workspaces.md)。完整源码根目录提供 `install.py` / `install.ps1`，桌面端设置页提供资料库和 Agent 接入入口。
+
 需要 Node.js/npm 和 Python 3.11+。以下命令在项目根目录执行：
 
 ```powershell
@@ -75,7 +79,7 @@ npm --prefix fue-studio install
 npm run dev
 ```
 
-桌面开发入口会启动后端服务。首次使用时，在应用中配置模型供应商及所需模型。
+桌面开发入口会发现或启动 Core。首次使用时，在应用中配置模型供应商及所需模型。
 
 类型检查与构建：
 
@@ -84,14 +88,16 @@ npm --prefix fue-studio run typecheck
 npm run build
 ```
 
-更多说明见 [后端说明](fue-core/README.md) 与 [前端说明](fue-studio/README.md)。
+更多说明见 [Core 说明](fue-core/README.md) 与 [Studio 说明](fue-studio/README.md)。回归测试运行 `npm run test:core`。
 
 ## 目录
 
 - `fue-studio/`：Electron 主进程、预加载层与 React 界面。
 - `fue-core/`：FastAPI 服务、对话、模型与知识库相关模块。
 - `fue-skill/`：外部 Agent 的安装、连接和 Direct/Delegated 使用说明。
-- `backend/`：仅保留原开发数据，忽略进 Git；业务代码已迁入 Core。
+- `workspaces/`：开发工作区，忽略入 Git；`.fue-workspace.json` 选择当前开发数据目录。
+- `backend/`：旧开发资料的兼容/回退位置，不再承载业务代码，不能当作无用源码直接删除。
+- `artifacts/`：本地测试和构建产物，忽略入 Git。
 - `contracts/`：Core 对外接口与数据约定；供应商预设随 Core 打包。
 - `i18n/`：中英文翻译资源。
 

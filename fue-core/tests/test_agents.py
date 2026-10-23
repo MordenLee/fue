@@ -16,22 +16,24 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+(Path(__file__).resolve().parents[2] / 'artifacts/tmp').mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.tools import StructuredTool
 from pydantic import ValidationError
 
-from agents.context import ContextLimitError, build_context
-from agents.registry import AgentRegistry
-from agents.runner import AgentRunner
-from agents.runtime import get_registry
-from agents.tools import SearchArguments, ReadArguments, ToolBinding, make_knowledge_binding, TOOL_IDS
-from chat import router as api
+from fue_core.agents.context import ContextLimitError, build_context
+from fue_core.agents.registry import AgentRegistry
+from fue_core.agents.runner import AgentRunner
+from fue_core.agents.runtime import get_registry
+from fue_core.agents.tools import SearchArguments, ReadArguments, ToolBinding, make_knowledge_binding, TOOL_IDS
+from fue_core.chat import service as api
+from fue_core.chat.router import router as _registered_chat_router
 
 
-RESOURCES = Path(__file__).resolve().parents[1] / "agents" / "resources"
-TEST_TEMP_ROOT = Path(__file__).resolve().parents[2]
+RESOURCES = Path(__file__).resolve().parents[1] / "fue_core" / "agents" / "resources"
+TEST_TEMP_ROOT = Path(__file__).resolve().parents[2] / "artifacts/tmp"
 
 
 @contextmanager
@@ -147,12 +149,12 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
     async def test_real_knowledge_adapter_owns_session_and_binds_resource_scope(self):
         factory = MagicMock()
         local_db = factory.return_value.__enter__.return_value
-        from chat.tools import RetrievedChunk
+        from fue_core.chat.tools import RetrievedChunk
         chunk = RetrievedChunk("[CITE-8]", 1, 0, "test.txt", 3, "source", 0.1)
         search = MagicMock()
         search.invoke.return_value = "[CITE-8] source"
         retrieved = []
-        with patch("chat.tools.make_search_tool", return_value=(search, [chunk])) as create:
+        with patch("fue_core.chat.tools.make_search_tool", return_value=(search, [chunk])) as create:
             tool = make_knowledge_binding([3, 7], retrieved, factory, initial_cite_num=8)
             result = await tool.execute({"query": "topic"})
         create.assert_called_once_with([3, 7], local_db, 8, raise_on_error=True)
@@ -322,7 +324,9 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         self.model = SimpleNamespace(qps=0, context_length=64, display_name="test", provider=SimpleNamespace(name="fake"))
         self.db = MagicMock()
         self.db.get.side_effect = lambda cls, key: None if cls is api.Setting else SimpleNamespace(id=key)
-        self.patches = [patch.object(api, "_get_chat_model", return_value=self.model)]
+        self.patches = [patch.object(api, "_get_chat_model", return_value=self.model),
+                        patch('fue_core.execution.reserve', return_value=('mock-run', None)),
+                        patch('fue_core.execution.finish')]
         for p in self.patches:
             p.start()
             self.addCleanup(p.stop)
@@ -387,11 +391,11 @@ class HttpIntegrationTests(unittest.TestCase):
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
         from sqlalchemy.pool import StaticPool
-        from database import Base
-        from providers.models import AIModel, Provider
-        from knowledge.models import KnowledgeBase
-        from knowledge.documents.models import DocumentFile
-        from chat.tools import RetrievedChunk
+        from fue_core.database import Base
+        from fue_core.providers.models import AIModel, Provider
+        from fue_core.knowledge.models import KnowledgeBase
+        from fue_core.knowledge.documents.models import DocumentFile
+        from fue_core.chat.tools import RetrievedChunk
 
         engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         sessions = sessionmaker(bind=engine)

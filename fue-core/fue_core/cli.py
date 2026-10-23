@@ -34,6 +34,9 @@ class Client:
             result = json.load(response)
         if path == "system/status" and result["instance_id"] != info["instance_id"]:
             raise ConnectionError("Core instance identity changed; reconnect")
+        if path == 'system/status' and (result.get('api_version', 1) != 1 or
+                result.get('data_format_version', 1) != 1 or str(result.get('version', '')).split('.')[0] != '2'):
+            raise ValueError('Running Core is incompatible; finish active work and upgrade explicitly')
         return result
 
     def start(self, initialize=False):
@@ -116,6 +119,9 @@ def parser():
 def main(argv=None):
     # Accept --json before or after the subcommand without duplicating schemas.
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == 'installation':
+        from fue_core.install import main as installation_main
+        return installation_main([arg for arg in argv[1:] if arg != '--json'])
     use_json = "--json" in argv
     argv = [x for x in argv if x != "--json"]
     args = parser().parse_args(argv)

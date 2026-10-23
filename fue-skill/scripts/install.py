@@ -1,35 +1,44 @@
-"""Copy this skill to an explicitly selected host skill directory."""
+"""Forward Skill installation to the unified Core/runtime/workspace installer."""
 import argparse
 import json
+import os
 from pathlib import Path
-import shutil
+import subprocess
 import sys
+
+from fue import registry_path
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--destination', required=True, help='Host skills directory; a fue-skill child will be created')
+    parser.add_argument('--destination', required=True, help='Host skills directory; installs a fue-skill child')
     parser.add_argument('--core-dir')
     parser.add_argument('--data-dir')
     parser.add_argument('--python')
+    parser.add_argument('--init', action='store_true')
+    parser.add_argument('--update-skill', action='store_true')
     args = parser.parse_args()
     source = Path(__file__).resolve().parents[1]
-    target = Path(args.destination).expanduser().resolve()/'fue-skill'
-    if target.exists():
-        parser.error('Destination already exists; preserve it and choose a fresh directory or update explicitly')
-    if target.is_relative_to(source):
-        parser.error('Destination cannot be inside this skill package')
-    config = {}
-    for argument, key in [(args.core_dir,'core_dir'),(args.data_dir,'data_dir'),(args.python,'python')]:
-        if argument:
-            path = Path(argument).expanduser().resolve()
-            if not path.exists(): parser.error(f'{key} does not exist')
-            config[key] = str(path)
-    shutil.copytree(source,target,ignore=shutil.ignore_patterns('__pycache__','connection.json'))
-    if config:
-        (target/'connection.json').write_text(json.dumps(config,indent=2),encoding='utf8')
-    print(json.dumps({'installed':str(target),'next':'Reload the host if required, then run scripts/fue.py status --json'}))
-    return 0
+    core = Path(args.core_dir or source.parent / 'fue-core')
+    python = args.python or sys.executable
+    if not (core / 'fue.py').is_file() and registry_path().exists():
+        data = json.loads(registry_path().read_text(encoding='utf-8'))
+        runtime = data['runtimes'].get(data.get('default_runtime'))
+        if runtime:
+            core, python = Path(runtime['core_dir']), runtime['python']
+    if not (core / 'fue.py').is_file():
+        parser.error('Download the full FUE source or Agent bundle and run install.py; a standalone Skill cannot install missing Core source.')
+    command = [python, str(core / 'fue.py'), 'installation', 'install', '--source-core', str(core),
+               '--skill-source', str(source), '--skill-dir', args.destination]
+    if args.data_dir: command += ['--data-dir', args.data_dir]
+    if args.python: command += ['--python', args.python]
+    if args.init: command += ['--init']
+    if args.update_skill: command += ['--update-skill']
+    env = dict(os.environ)
+    env.pop('PYTHONHOME', None)
+    env.pop('PYTHONPATH', None)
+    return subprocess.call(command, env=env)
 
 
-if __name__=='__main__': raise SystemExit(main())
+if __name__ == '__main__':
+    raise SystemExit(main())

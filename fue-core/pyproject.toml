@@ -16,13 +16,10 @@ fue-core = "fue_core.server:run"
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
-[tool.setuptools]
-py-modules = ["database"]
-
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["fue_core*", "agents*", "admin*", "auxmodels*", "chat*", "conversations*", "folders*", "knowledge*", "memory*", "providers*", "settings*"]
+include = ["fue_core*"]
 
 [tool.setuptools.package-data]
-agents = ["resources/**/*.json", "resources/**/*.md"]
+"fue_core.agents" = ["resources/**/*.json", "resources/**/*.md"]
 fue_core = ["resources/*.json"]

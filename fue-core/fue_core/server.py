@@ -15,15 +15,20 @@ def run(argv=None):
     parser.add_argument("--init", action="store_true", help="Explicitly allow a new data directory")
     args = parser.parse_args(argv)
     if args.data_dir:
+        os.environ['FUE_DATA_DIR'] = args.data_dir
         os.environ["APP_BACKEND_DATA_DIR"] = args.data_dir
     root = data_dir()
     if not args.init and not (root / "app.db").exists():
         parser.error("Data directory is not initialized; use --init for first startup")
     with InstanceLock(root):
+        from fue_core.platform.workspace import prepare_workspace
+        from fue_core.platform.installation import write_json
+        manifest = prepare_workspace(root)
         state = Lifecycle(root)
         import uvicorn
         from fue_core.app import app
-        port = args.port if args.port is not None else int(os.environ.get("APP_BACKEND_PORT") or 0)
+        app.state.workspace_manifest = manifest
+        port = args.port if args.port is not None else int(os.environ.get('FUE_CORE_PORT') or os.environ.get("APP_BACKEND_PORT") or 0)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(("127.0.0.1", port))
         app.state.core = state

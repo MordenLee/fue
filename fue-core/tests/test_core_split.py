@@ -9,15 +9,16 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
+(Path(__file__).resolve().parents[2] / 'artifacts/tmp').mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from database import Base, get_db
-import providers, knowledge, conversations, folders
-import memory.models
+from fue_core.database import Base, get_db
+from fue_core import providers, knowledge, conversations, folders
+import fue_core.memory.models
 from fue_core.platform.lifecycle import Lifecycle, InstanceLock, CoreAccess
 from fue_core.system import router as system_router
 from fue_core.external import router as external_router
@@ -26,7 +27,7 @@ from fue_core.tasks import TaskManager, TaskInput, ResearchTask
 
 class CoreTests(unittest.TestCase):
     def setUp(self):
-        self.root = Path(__file__).resolve().parents[2] / ('.tmp_core_'+uuid4().hex)
+        self.root = Path(__file__).resolve().parents[2] / "artifacts/tmp" / ('.tmp_core_'+uuid4().hex)
         self.root.mkdir()
         self.now = 0
         self.state = Lifecycle(self.root, clock=lambda:self.now)
@@ -94,7 +95,7 @@ class CoreTests(unittest.TestCase):
 
 class TaskTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.root=Path(__file__).resolve().parents[2]/('.tmp_core_'+uuid4().hex)
+        self.root=Path(__file__).resolve().parents[2] / "artifacts/tmp" / ('.tmp_core_'+uuid4().hex)
         self.root.mkdir()
         self.engine=create_engine('sqlite://',poolclass=StaticPool,connect_args={'check_same_thread':False})
         Base.metadata.create_all(self.engine)
@@ -114,7 +115,7 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
             entered.set()
             await asyncio.sleep(100)
         self.manager.research=research
-        with patch('providers.chat.load_chat_model',return_value=object()):
+        with patch('fue_core.providers.chat.load_chat_model',return_value=object()):
             first=self.manager.submit(self.payload)
             self.assertEqual(first,self.manager.submit(self.payload))
         await entered.wait()
@@ -159,13 +160,14 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
             self.manager.event(task_id,'usage',{'input_tokens':12})
             return {'content':'synthetic result'}
         self.manager.research=research
-        with patch('providers.chat.load_chat_model',return_value=object()):
+        with patch('fue_core.providers.chat.load_chat_model',return_value=object()):
             task_id=self.manager.submit(self.payload)
         await asyncio.gather(*list(self.manager.running.values()))
         with self.factory() as db:
             row=db.get(ResearchTask,task_id)
             self.assertEqual(row.state,'succeeded')
-            self.assertEqual(row.events[0]['sequence'],1)
+            from fue_core.execution import read_events
+            self.assertEqual(read_events(db, task_id)[0]['sequence'],1)
             self.assertEqual(row.result['content'],'synthetic result')
 
     async def test_research_uses_real_runner_and_budget_ledger_without_studio_conversation(self):
@@ -173,7 +175,7 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
         from langchain_core.messages import AIMessage
         model = SimpleNamespace(context_length=64)
         llm = FakeModel([AIMessage(content='A synthetic research result')])
-        with patch('providers.chat.load_chat_model',return_value=model), patch('providers.chat.build_llm',return_value=llm):
+        with patch('fue_core.providers.chat.load_chat_model',return_value=model), patch('fue_core.providers.chat.build_llm',return_value=llm):
             task_id = self.manager.submit(self.payload)
             await asyncio.gather(*list(self.manager.running.values()))
         with self.factory() as db:

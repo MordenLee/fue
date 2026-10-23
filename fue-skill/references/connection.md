@@ -1,8 +1,30 @@
 # Install and connect
 
-The package is the `fue-skill` directory. Install/copy it into the host's supported skill directory using that host's normal mechanism. Preserve an existing package/configuration; reload if the host requires it. This package does not install or modify the host's memory system.
+The Skill is an entry point, not the Core runtime. On a new machine use the full source checkout or Windows Agent offline bundle and its root installer. The installer installs/reuses Core, registers one workspace, then copies the Skill into the host's explicitly selected skills directory. It does not modify the host's memory system.
 
-`python scripts/install.py --destination <host-skills-directory>` copies the package into a `fue-skill` child and refuses to overwrite an existing installation. Optional `--core-dir`, `--data-dir`, `--python` save explicit connection paths. On Windows, Studio also writes non-secret connection hints into `%APPDATA%/fue/core-connection.json`; an installed Skill reads these automatically after Studio has run once. Environment overrides take priority.
+From the full distribution:
+
+```text
+python install.py inspect
+python install.py install --skill-dir <host-skills-directory> --data-dir <existing-FUE-data-directory>
+```
+
+For a genuinely new workspace, add `--init` and select an empty directory. Never use `--init` to recover a missing library. A source install requires Python 3.11+ and network access for dependencies; it creates a dedicated virtual environment. The offline Windows distribution includes Python and dependencies: run `powershell -NoProfile -File install.ps1 install --skill-dir <host-skills-directory> --data-dir <directory> --init` without a separate Python installation. Do not claim this bundle is downloadable until an actual release asset is published.
+
+`python scripts/install.py --destination <host-skills-directory>` forwards to that same installer when a sibling or registered Core exists. A standalone copied Skill with no Core source tells you to obtain the full distribution. Repeating an identical install is safe; changing an existing Skill requires `--update-skill`, which preserves a backup and its local connection settings.
+
+The shared registry is `%APPDATA%/fue/installation.json` on Windows, `~/Library/Application Support/fue/installation.json` on macOS, and `$XDG_CONFIG_HOME/fue/installation.json` (default `~/.config/fue/installation.json`) on Linux. `FUE_REGISTRY_PATH` selects an isolated registry. It records runtime/workspace locations, not API keys. Both Studio and this Skill read it. Adding a second workspace does not silently switch the default; use `python install.py select <workspace-id>`, or pass `--workspace <id>` to `scripts/fue.py` for one command.
+
+Explicit environment and per-Skill `connection.json` overrides remain supported. Otherwise the registry takes priority over legacy Studio connection hints. Missing registered paths are errors, never reasons to create a replacement database. Windows Studio's old `%APPDATA%/fue/core-connection.json` is still a legacy discovery fallback when no registry exists.
+
+On Windows an installed Skill can run without `python` on PATH:
+
+```text
+powershell -NoProfile -File <skill>/scripts/fue.ps1 status --json
+powershell -NoProfile -File <skill>/scripts/fue.ps1 --auto-start libraries list --json
+```
+
+For managed runtime updates, use the new distribution's `install.py install --upgrade` with the existing workspace. Active Studio leases/tasks block replacement. Runtimes are installed side by side; startup checks data-format compatibility before bootstrap, backs up SQLite before a version transition, and rejects downgrades. This is not a migration engine for unknown future Chroma formats.
 
 In a source checkout, `scripts/fue.py` finds the sibling `fue-core` and repository Python environment automatically. For a desktop installation, configure:
 

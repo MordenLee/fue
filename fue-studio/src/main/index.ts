@@ -5,6 +5,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerWritingDocuments } from './writingDocuments'
 import { initializeCoreAccess, ensureCore, releaseCore } from './coreClient'
+import { installationInfo, installHostSkill, openWorkspaceNextLaunch, checkHostSkill } from './installation'
 
 // ─── File logging (production only) ───
 let _logFile: string | null = null
@@ -39,7 +40,7 @@ function createWindow(): void {
       sandbox: false
     }
   })
-  registerWritingDocuments(mainWindow)
+  if (process.env.FUE_ENABLE_WRITING === '1') registerWritingDocuments(mainWindow)
 
   // Update title bar overlay and window background when theme changes (Windows only)
   if (process.platform === 'win32') {
@@ -113,7 +114,12 @@ app.whenReady().then(async () => {
   ipcMain.on('ping', () => console.log('pong'))
 
   initializeCoreAccess()
+  ipcMain.handle('get-core-url', async () => `http://127.0.0.1:${await ensureCore()}`)
   ipcMain.handle('get-backend-url', async () => `http://127.0.0.1:${await ensureCore()}`)
+  ipcMain.handle('installation-info', installationInfo)
+  ipcMain.handle('installation-check', checkHostSkill)
+  ipcMain.handle('installation-skill', installHostSkill)
+  ipcMain.handle('installation-workspace', openWorkspaceNextLaunch)
 
   // IPC: open native file dialog and return selected file paths
   ipcMain.handle('dialog-open-files', async (_, options: { filters?: { name: string; extensions: string[] }[]; title?: string }) => {

@@ -16,9 +16,9 @@ from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from chat.router import ChatMessage, ChatRequest, RAGChatRequest, chat_stream, chat_rag_stream
-from database import SessionLocal
-from providers.models import Provider
+from fue_core.chat.router import ChatMessage, ChatRequest, RAGChatRequest, chat_stream, chat_rag_stream
+from fue_core.database import SessionLocal
+from fue_core.providers.models import Provider
 
 
 async def check(model_id, kb_id, *, rag, secrets, session_factory=SessionLocal, synthetic=False, require_context=False):
@@ -90,11 +90,12 @@ async def synthetic_checks(model_id, secrets):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import joinedload, sessionmaker
     from sqlalchemy.pool import StaticPool
-    from database import Base
-    from providers.models import AIModel
-    from knowledge.models import KnowledgeBase
-    from knowledge.documents.models import DocumentFile
-    from chat import router as api
+    from fue_core.database import Base
+    from fue_core.providers.models import AIModel
+    from fue_core.knowledge.models import KnowledgeBase
+    from fue_core.knowledge.documents.models import DocumentFile
+    from fue_core.chat import service as api
+from fue_core.chat.router import router as _registered_chat_router
 
     # Read only the selected model/provider configuration, not conversations/documents.
     with SessionLocal() as db:
@@ -129,7 +130,7 @@ async def synthetic_checks(model_id, secrets):
     try:
         # Configure storage dependencies only. Models, routes, registry, runner,
         # search tool, Chroma retrieval and citation processing are all real.
-        with patch.object(api, "SessionLocal", sessions), patch("knowledge.chroma._client", client):
+        with patch.object(api, "SessionLocal", sessions), patch("fue_core.knowledge.chroma._client", client):
             plain = await check(model_id, kb_id, rag=False, secrets=secrets, session_factory=sessions)
             if not plain:
                 return False

@@ -13,14 +13,15 @@ from chromadb.config import Settings
 from sqlalchemy import create_engine
 from sqlalchemy.orm import joinedload, sessionmaker
 from sqlalchemy.pool import StaticPool
-from database import Base, SessionLocal
-from providers.models import AIModel, Provider
-from conversations.models import Conversation, MessageAppend, MessageCreate
-from conversations.router import append_messages
-from chat import router as api
-from memory.service import process_pending
-from settings.models import Setting
-import knowledge
+from fue_core.database import Base, SessionLocal
+from fue_core.providers.models import AIModel, Provider
+from fue_core.conversations.models import Conversation, MessageAppend, MessageCreate
+from fue_core.conversations.router import append_messages
+from fue_core.chat import service as api
+from fue_core.chat.router import router as _registered_chat_router
+from fue_core.memory.service import process_pending
+from fue_core.settings.models import Setting
+from fue_core import knowledge
 
 
 async def main():
@@ -47,7 +48,7 @@ async def main():
             MessageCreate(role="assistant", content=("padding " * 160) + "The validation token is ORCHID-742."),
             MessageCreate(role="user", content="Review"), MessageCreate(role="assistant", content="NEXT-MARKER")]), db)
     try:
-        with patch.object(api, "SessionLocal", sessions), patch("knowledge.chroma.get_chroma_client", return_value=client):
+        with patch.object(api, "SessionLocal", sessions), patch("fue_core.knowledge.chroma.get_chroma_client", return_value=client):
             process_pending(sessions)
             payload = api.ChatRequest(messages=[api.ChatMessage(role="user", content=(
                 "This is a synthetic history test. First search_chat_history for FUE_QA_SMOKE. "

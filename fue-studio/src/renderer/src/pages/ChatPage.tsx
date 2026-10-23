@@ -4,6 +4,7 @@ import { FolderListSidebar } from '../components/shared/FolderListSidebar'
 import { RenameDialog } from '../components/shared/RenameDialog'
 import { MoveFolderDialog } from '../components/shared/MoveFolderDialog'
 import { MessageList } from '../components/chat/MessageList'
+import { ExecutionPanel } from '../components/chat/ExecutionPanel'
 import { ChatInput } from '../components/chat/ChatInput'
 import { RetrievalPanel } from '../components/chat/RetrievalPanel'
 import { ResizablePanel } from '../components/ui/ResizablePanel'
@@ -602,6 +603,8 @@ export function ChatPage() {
       {selected ? (
         <>
           <div className="flex-1 flex flex-col min-w-0 pb-2">
+            <ExecutionPanel key={`execution-${selected.id}`} conversationId={selected.id}
+              activity={streaming.conversationId === selected.id ? streaming.activity : []} busy={isStreamingForSelected} />
             <WorkingMemoryPanel key={selected.id} conversationId={selected.id}
               activity={streaming.conversationId === selected.id ? streaming.activity : []}
               busy={isStreamingForSelected} revision={messages.length} />

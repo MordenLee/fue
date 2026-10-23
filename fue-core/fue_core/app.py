@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -20,71 +21,35 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-from database import Base, engine, SessionLocal
-import providers  # noqa: F401 — 确保 Provider / AIModel 注册到 Base.metadata
-import settings  # noqa: F401 — 确保 Setting 注册到 Base.metadata
-import knowledge  # noqa: F401 — 确保 KnowledgeBase / DocumentFile / Citation 注册到 Base.metadata
-import conversations  # noqa: F401 — 确保 Conversation / Message 注册到 Base.metadata
-import folders  # noqa: F401 — 确保 Folder 注册到 Base.metadata
-from providers.models import AIModel, DeletedProvider, Provider
+from fue_core.database import Base, engine, SessionLocal
+from fue_core import providers  # noqa: F401 — 确保 Provider / AIModel 注册到 Base.metadata
+from fue_core import settings  # noqa: F401 — 确保 Setting 注册到 Base.metadata
+from fue_core import knowledge  # noqa: F401 — 确保 KnowledgeBase / DocumentFile / Citation 注册到 Base.metadata
+from fue_core import conversations  # noqa: F401 — 确保 Conversation / Message 注册到 Base.metadata
+from fue_core import folders  # noqa: F401 — 确保 Folder 注册到 Base.metadata
+from fue_core.providers.models import AIModel, DeletedProvider, Provider
 from sqlalchemy import func
-from providers.router import router as providers_router
-from settings.router import router as settings_router
-from knowledge.router import router as knowledge_router
-from knowledge.documents.router import router as documents_router
-from chat.router import router as chat_router
-from admin.router import router as admin_router
-from auxmodels.router import router as aux_router
-from conversations.router import router as conversations_router
-from folders.router import router as folders_router
-from agents.runtime import get_registry
-from memory.router import router as memory_router, worker as memory_worker
-from memory.mcp import router as mcp_router
-from memory.workspace import router as workspace_router
+from fue_core.providers.router import router as providers_router
+from fue_core.settings.router import router as settings_router
+from fue_core.knowledge.router import router as knowledge_router
+from fue_core.knowledge.documents.router import router as documents_router
+from fue_core.chat.router import router as chat_router
+from fue_core.admin.router import router as admin_router
+from fue_core.auxmodels.router import router as aux_router
+from fue_core.conversations.router import router as conversations_router
+from fue_core.folders.router import router as folders_router
+from fue_core.agents.runtime import get_registry
+from fue_core.memory.router import router as memory_router, worker as memory_worker
+from fue_core.memory.mcp import router as mcp_router
+from fue_core.memory.workspace import router as workspace_router
 
 # Fail before serving chat requests if packaged agent/skill resources are invalid.
 get_registry()
 
 # 启动时自动建表（首次运行创建 app.db）
 from fue_core.tasks import TaskManager, router as tasks_router
-Base.metadata.create_all(bind=engine)
-
-# ---------------------------------------------------------------------------
-# 简易迁移：确保 providers 表有 sort_order 列（已有数据库可能缺少）
-# ---------------------------------------------------------------------------
-with engine.connect() as conn:
-    from sqlalchemy import text, inspect as sa_inspect
-    cols = [c["name"] for c in sa_inspect(engine).get_columns("providers")]
-    if "sort_order" not in cols:
-        conn.execute(text("ALTER TABLE providers ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"))
-        conn.commit()
-
-# ---------------------------------------------------------------------------
-# 简易迁移：为 conversations 和 knowledge_bases 补充 folder_id 列
-# ---------------------------------------------------------------------------
-with engine.connect() as conn:
-    from sqlalchemy import text, inspect as sa_inspect
-    conv_cols = [c["name"] for c in sa_inspect(engine).get_columns("conversations")]
-    if "folder_id" not in conv_cols:
-        conn.execute(text("ALTER TABLE conversations ADD COLUMN folder_id INTEGER"))
-        conn.commit()
-    kb_cols = [c["name"] for c in sa_inspect(engine).get_columns("knowledge_bases")]
-    if "folder_id" not in kb_cols:
-        conn.execute(text("ALTER TABLE knowledge_bases ADD COLUMN folder_id INTEGER"))
-        conn.commit()
-    if "use_delimiter_split" not in kb_cols:
-        conn.execute(text("ALTER TABLE knowledge_bases ADD COLUMN use_delimiter_split INTEGER NOT NULL DEFAULT 1"))
-        conn.commit()
-
-# ---------------------------------------------------------------------------
-# 简易迁移：为 messages 表补充 model_id 列（记录每条消息使用的模型）
-# ---------------------------------------------------------------------------
-with engine.connect() as conn:
-    from sqlalchemy import text, inspect as sa_inspect
-    msg_cols = [c["name"] for c in sa_inspect(engine).get_columns("messages")]
-    if "model_id" not in msg_cols:
-        conn.execute(text("ALTER TABLE messages ADD COLUMN model_id INTEGER REFERENCES ai_models(id) ON DELETE SET NULL"))
-        conn.commit()
+from fue_core.execution import router as execution_router
+from fue_core.platform.migrations import migrate
 
 # ---------------------------------------------------------------------------
 # 首次启动自动写入预置供应商（仅当数据库中还没有任何 Provider 时执行）
@@ -93,8 +58,8 @@ from fue_core.platform.paths import resources_dir
 
 _PROVIDERS_JSON = resources_dir() / "providers.json"
 
-_KNOWN_COMPROMISED_PRESET_KEYS = frozenset({
-    "sk-bisxyxtfvgwdddldvhoevzxqasahghfkekkujchpifewzycn",
+_KNOWN_COMPROMISED_PRESET_KEY_HASHES = frozenset({
+    "ae962de732c4cb6c080da194df1eb29d9b6bb77bc99097d80775d8b03a57a0fc",
 })
 
 # Safety switch:
@@ -119,7 +84,7 @@ def _should_clear_seeded_api_key(existing: Provider, preset_api_key: str) -> boo
     if preset_api_key or not existing.api_key:
         return False
 
-    return existing.api_key in _KNOWN_COMPROMISED_PRESET_KEYS
+    return hashlib.sha256(existing.api_key.encode()).hexdigest() in _KNOWN_COMPROMISED_PRESET_KEY_HASHES
 
 def _auto_seed() -> None:
     if not _PROVIDERS_JSON.exists():
@@ -168,11 +133,20 @@ def _auto_seed() -> None:
     finally:
         db.close()
 
-_auto_seed()
 
 
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
+    migrate(engine, Base.metadata)
+    _auto_seed()
+    manifest = getattr(app_instance.state, 'workspace_manifest', None)
+    if manifest is not None:
+        from fue_core.platform.installation import write_json
+        from fue_core.platform.paths import data_dir
+        write_json(data_dir() / 'workspace.json', manifest)
+    from fue_core.execution import recover
+    with SessionLocal() as db:
+        recover(db)
     # Announce the backend port to Electron after the server is ready.
     port = getattr(app_instance.state, '_backend_port', None)
     if port is not None:
@@ -181,7 +155,7 @@ async def lifespan(app_instance: FastAPI):
     if core:
         app_instance.state.tasks = TaskManager(core)
         app_instance.state.tasks.recover()
-        from chat.router import _background_tasks
+        from fue_core.chat.service import _background_tasks
         core.busy_probe = lambda: bool(_background_tasks)
         core.publish(port)
     supervisor = asyncio.create_task(core.supervise()) if core else None
@@ -200,7 +174,7 @@ async def lifespan(app_instance: FastAPI):
             pass
 
 
-app = FastAPI(title="App Backend", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="FUE Core", version="2.0.0", lifespan=lifespan)
 
 # 允许 Electron 渲染进程跨域访问：
 # - 开发环境: http://127.0.0.1:<vite_port> / http://localhost:<vite_port>
@@ -218,6 +192,7 @@ app.include_router(system_router)
 from fue_core.external import router as external_router
 app.include_router(external_router)
 app.include_router(tasks_router)
+app.include_router(execution_router)
 
 app.include_router(providers_router)
 app.include_router(settings_router)

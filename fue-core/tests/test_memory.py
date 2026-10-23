@@ -16,17 +16,17 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from database import Base
-from conversations.models import Conversation, Message, MessageAppend, MessageCreate
-from conversations import router as chats
-from memory import service
-from memory.models import QAPair, ChatEvent
-from memory.mcp import dispatch, router as mcp_router
-from agents.tools import make_source_bindings
-from settings.models import Setting
-from providers.models import Provider, AIModel
-from knowledge.models import KnowledgeBase
-from knowledge.documents.models import DocumentFile
+from fue_core.database import Base
+from fue_core.conversations.models import Conversation, Message, MessageAppend, MessageCreate
+from fue_core.conversations import router as chats
+from fue_core.memory import service
+from fue_core.memory.models import QAPair, ChatEvent
+from fue_core.memory.mcp import dispatch, router as mcp_router
+from fue_core.agents.tools import make_source_bindings
+from fue_core.settings.models import Setting
+from fue_core.providers.models import Provider, AIModel
+from fue_core.knowledge.models import KnowledgeBase
+from fue_core.knowledge.documents.models import DocumentFile
 
 
 class MemoryTests(unittest.TestCase):
@@ -37,7 +37,7 @@ class MemoryTests(unittest.TestCase):
         self.client = chromadb.EphemeralClient(settings=Settings(anonymized_telemetry=False))
         for collection in self.client.list_collections():
             self.client.delete_collection(getattr(collection, "name", collection))
-        p = patch("knowledge.chroma.get_chroma_client", return_value=self.client)
+        p = patch("fue_core.knowledge.chroma.get_chroma_client", return_value=self.client)
         p.start()
         self.addCleanup(p.stop)
         self.addCleanup(self.engine.dispose)
@@ -131,7 +131,7 @@ class MemoryTests(unittest.TestCase):
             return [1.0, 0.0]
         embedder = MagicMock()
         embedder.embed_query.side_effect = embed
-        with patch("providers.embeddings.build_embedder", return_value=embedder):
+        with patch("fue_core.providers.embeddings.build_embedder", return_value=embedder):
             service.process_pending(self.sessions)
         self.assertEqual(self.client.get_collection("chat_memory").count(), 0)
         self.assertNotIn(f"chat_memory_vectors_{self.model_id}", service._collections(self.client))
@@ -142,7 +142,7 @@ class MemoryTests(unittest.TestCase):
         self.setting("memory_query_mode", "rag")
         embedder = MagicMock()
         embedder.embed_query.return_value = [1.0, 0.0]
-        with patch("providers.embeddings.build_embedder", return_value=embedder):
+        with patch("fue_core.providers.embeddings.build_embedder", return_value=embedder):
             service.process_pending(self.sessions)
             with self.sessions() as db:
                 result = service.search(db, "financial plan", mode="vector")
@@ -202,7 +202,7 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual(client.post("/api/mcp", json=body).status_code, 401)
             self.assertEqual(client.post("/api/mcp", json=body, headers={**headers, "Origin": "https://example.com"}).status_code, 403)
             # Initialization should not touch application storage.
-            with patch("database.SessionLocal", self.sessions):
+            with patch("fue_core.database.SessionLocal", self.sessions):
                 response = client.post("/api/mcp", json=body, headers=headers)
             self.assertEqual(response.status_code, 200)
             self.assertIn("protocolVersion", response.json()["result"])
@@ -214,7 +214,7 @@ class MemoryTests(unittest.TestCase):
         broken = MagicMock()
         broken.list_collections.return_value = ["chat_memory"]
         broken.get_collection.return_value.delete.side_effect = RuntimeError("index unavailable")
-        with self.sessions() as db, patch("knowledge.chroma.get_chroma_client", return_value=broken):
+        with self.sessions() as db, patch("fue_core.knowledge.chroma.get_chroma_client", return_value=broken):
             with self.assertRaises(RuntimeError):
                 chats.delete_conversation(self.conv_id, db)
             db.rollback()
@@ -224,7 +224,7 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual(db.query(QAPair).count(), 1)
 
     def test_deleted_source_prevents_late_answer_persistence(self):
-        from chat.router import _save_turn, ChatMessage
+        from fue_core.chat.service import _save_turn, ChatMessage
         ids = self.append()
         with self.sessions() as db:
             chats.clear_messages(self.conv_id, db)
@@ -235,7 +235,7 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual(db.query(Message).count(), 0)
 
     def test_knowledge_keyword_only_never_uses_embedding_or_rerank(self):
-        from agents.tools import make_knowledge_binding
+        from fue_core.agents.tools import make_knowledge_binding
         self.setting("knowledge_query_mode", "keyword")
         with self.sessions() as db:
             kb = KnowledgeBase(name="book", embed_model_id=self.model_id, collection_name="memory_test_keyword")
@@ -247,8 +247,8 @@ class MemoryTests(unittest.TestCase):
             "document_file_id": 1, "chunk_index": 0, "original_filename": "test.txt"}])
         async def run():
             binding = make_knowledge_binding([kb_id], [], self.sessions)
-            with patch("providers.embeddings.build_embedder", side_effect=AssertionError("Embedding called")), \
-                 patch("chat.tools._maybe_rerank", side_effect=AssertionError("Rerank called")):
+            with patch("fue_core.providers.embeddings.build_embedder", side_effect=AssertionError("Embedding called")), \
+                 patch("fue_core.chat.tools._maybe_rerank", side_effect=AssertionError("Rerank called")):
                 result = await binding.execute({"query": "orchid", "mode": "vector"})
             self.assertEqual(result.status, "ok")
             with self.assertRaises(PermissionError):

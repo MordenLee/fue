@@ -9,24 +9,25 @@ from pathlib import Path
 from uuid import uuid4
 from unittest.mock import patch, MagicMock
 
+(Path(__file__).resolve().parents[2] / 'artifacts/tmp').mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from database import Base, get_db
-from providers.models import Provider, AIModel
-from conversations.models import Conversation, Message, MessageAppend, MessageCreate
-from conversations import router as conversations
-from settings.models import Setting
-from memory.models import QAPair, ContextSummary, ContextEvent, ModelUsage
-from memory import service, working
-from memory.workspace import update_material, MaterialUpdate, router as workspace_router
-from agents.runtime import get_registry
-from agents.usage import UsageLedger
-from agents.context import ContextLimitError
-from chat import router as chat
+from fue_core.database import Base, get_db
+from fue_core.providers.models import Provider, AIModel
+from fue_core.conversations.models import Conversation, Message, MessageAppend, MessageCreate
+from fue_core.conversations import router as conversations
+from fue_core.settings.models import Setting
+from fue_core.memory.models import QAPair, ContextSummary, ContextEvent, ModelUsage
+from fue_core.memory import service, working
+from fue_core.memory.workspace import update_material, MaterialUpdate, router as workspace_router
+from fue_core.agents.runtime import get_registry
+from fue_core.agents.usage import UsageLedger
+from fue_core.agents.context import ContextLimitError
+from fue_core.chat import router as chat
 
 
 class ProviderFixture:
@@ -61,7 +62,7 @@ class ProviderFixture:
 
 class WorkingContextTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.root = Path(__file__).resolve().parents[2] / (".tmp_working_"+uuid4().hex)
+        self.root = Path(__file__).resolve().parents[2] / "artifacts/tmp" / (".tmp_working_"+uuid4().hex)
         self.root.mkdir()
         self.engine = create_engine("sqlite:///"+str(self.root/"app.db"), connect_args={"check_same_thread": False})
         self.factory = sessionmaker(bind=self.engine, expire_on_commit=False)
@@ -79,7 +80,7 @@ class WorkingContextTests(unittest.IsolatedAsyncioTestCase):
             db.commit()
         fake_chroma = MagicMock()
         fake_chroma.list_collections.return_value = []
-        p = patch("knowledge.chroma.get_chroma_client", return_value=fake_chroma)
+        p = patch("fue_core.knowledge.chroma.get_chroma_client", return_value=fake_chroma)
         p.start(); self.addCleanup(p.stop)
 
     def tearDown(self):
@@ -102,7 +103,7 @@ class WorkingContextTests(unittest.IsolatedAsyncioTestCase):
     async def plan(self, fixture=None, ledger=None):
         fixture = fixture or ProviderFixture()
         ledger = ledger or UsageLedger()
-        with patch("providers.chat.build_llm", return_value=fixture):
+        with patch("fue_core.providers.chat.build_llm", return_value=fixture):
             return [e async for e in working.prepare(self.factory, self.cid, get_registry().resolve(history_enabled=True), 64, [], "test-run", ledger)]
 
     async def test_compaction_persists_md_event_and_reuses_summary_without_model_call(self):
@@ -224,7 +225,7 @@ class WorkingContextTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_file_projection_failure_and_external_edit_are_recoverable(self):
         self.history()
-        with patch('memory.working.os.replace',side_effect=OSError('disk busy')):
+        with patch('fue_core.memory.working.os.replace',side_effect=OSError('disk busy')):
             await self.plan()
         with self.factory() as db:
             head=db.query(ContextSummary).filter_by(active=True).one()
@@ -241,7 +242,7 @@ class WorkingContextTests(unittest.IsolatedAsyncioTestCase):
         self.history();await self.plan()
         with self.factory() as db:
             msg=db.query(Message).order_by(Message.id).first();mid=msg.id
-            with patch('memory.working.Path.unlink',side_effect=OSError('locked')):
+            with patch('fue_core.memory.working.Path.unlink',side_effect=OSError('locked')):
                 with self.assertRaises(OSError):conversations.delete_message(self.cid,mid,db)
             db.rollback()
             self.assertIsNotNone(db.get(Message,mid))
@@ -263,7 +264,7 @@ class WorkingContextTests(unittest.IsolatedAsyncioTestCase):
         with self.factory() as db:self.assertEqual(db.query(ContextSummary).count(),0)
 
     async def test_retrieval_ledger_reuses_identical_query_vectors(self):
-        from providers.telemetry import active_ledger,TrackedClient
+        from fue_core.providers.telemetry import active_ledger,TrackedClient
         client=MagicMock();client.embed_query.return_value=[1.0,0.0]
         ledger=UsageLedger();token=active_ledger.set(ledger)
         try:
@@ -290,7 +291,7 @@ class WorkingContextTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ledger.records[0]['usage']['total_tokens'],103)
 
     async def test_all_four_http_paths_prepare_working_context_and_store_usage(self):
-        from knowledge.models import KnowledgeBase
+        from fue_core.knowledge.models import KnowledgeBase
         app = FastAPI(); app.include_router(chat.router); app.include_router(workspace_router)
         def dependency():
             with self.factory() as db: yield db
@@ -298,7 +299,7 @@ class WorkingContextTests(unittest.IsolatedAsyncioTestCase):
         with self.factory() as db:
             kb = KnowledgeBase(name='isolated', embed_model_id=self.model_id)
             db.add(kb); db.commit(); kb_id=kb.id
-        with TestClient(app) as client, patch('chat.router.build_llm',return_value=ProviderFixture()), patch('providers.chat.build_llm',return_value=ProviderFixture()):
+        with TestClient(app) as client, patch('fue_core.chat.service.build_llm',return_value=ProviderFixture()), patch('fue_core.providers.chat.build_llm',return_value=ProviderFixture()):
             for suffix in ['', '/stream', '/rag', '/rag/stream']:
                 payload={'conversation_id':self.cid,'messages':[{'role':'user','content':'question '+suffix}]}
                 if 'rag' in suffix: payload['kb_ids']=[kb_id]

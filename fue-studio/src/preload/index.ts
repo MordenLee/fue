@@ -3,7 +3,12 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 // Custom APIs for renderer
 const api = {
-  getBackendUrl: (): Promise<string> => ipcRenderer.invoke('get-backend-url'),
+  getCoreUrl: (): Promise<string> => ipcRenderer.invoke('get-core-url'),
+  getBackendUrl: (): Promise<string> => ipcRenderer.invoke('get-core-url'),
+  checkHostSkill: (): Promise<string | null> => ipcRenderer.invoke('installation-check'),
+  installationInfo: () => ipcRenderer.invoke('installation-info'),
+  installHostSkill: (): Promise<string | null> => ipcRenderer.invoke('installation-skill'),
+  openWorkspaceNextLaunch: (): Promise<string | null> => ipcRenderer.invoke('installation-workspace'),
   setModalOverlay: (dimmed: boolean): void => ipcRenderer.send('titlebar-modal-overlay', dimmed),
   openFileDialog: (options?: { filters?: { name: string; extensions: string[] }[]; title?: string }): Promise<string[]> =>
     ipcRenderer.invoke('dialog-open-files', options ?? {}),

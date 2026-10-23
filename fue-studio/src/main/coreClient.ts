@@ -5,6 +5,7 @@ import { join, resolve } from 'path'
 import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { is } from '@electron-toolkit/utils'
+import { prepareInstallation, cleanPythonEnv, type Installation } from './installation'
 
 type Discovery = { instance_id: string; data_dir: string; port: number; tokens: { studio: string } }
 const clientId = randomUUID()
@@ -12,18 +13,22 @@ let connection: Discovery | null = null
 let starting: Promise<number> | null = null
 let heartbeat: NodeJS.Timeout | null = null
 let quitting = false
+let installation: Installation | null = null
 
 function componentDir(): string {
-  return is.dev ? join(__dirname, '..', '..', '..', 'fue-core') : join(process.resourcesPath, 'backend')
+  if (installation) return installation.runtime.core_dir
+  return is.dev ? join(__dirname, '..', '..', '..', 'fue-core') : join(process.resourcesPath, 'core')
 }
 
 function dataDir(): string {
+  if (installation) return installation.data_dir
   return process.env.APP_BACKEND_DATA_DIR || (is.dev
     ? join(__dirname, '..', '..', '..', 'backend')
-    : join(app.getPath('userData'), 'backend-data'))
+    : join(app.getPath('userData'), 'workspaces', 'default'))
 }
 
 function python(): string {
+  if (installation) return installation.runtime.python
   if (!is.dev) return process.platform === 'win32'
     ? join(process.resourcesPath, 'python', 'python.exe')
     : join(process.resourcesPath, 'python', 'bin', 'python3')
@@ -63,18 +68,27 @@ function call(info: Discovery, path: string, body?: object): Promise<Record<stri
 }
 
 async function discover(): Promise<Discovery | null> {
+  let info: Discovery
+  let state: Record<string, unknown>
   try {
-    const info = JSON.parse(readFileSync(join(dataDir(), 'runtime', 'core.json'), 'utf8')) as Discovery
+    info = JSON.parse(readFileSync(join(dataDir(), 'runtime', 'core.json'), 'utf8')) as Discovery
     if (resolve(info.data_dir).toLowerCase() !== resolve(dataDir()).toLowerCase()) return null
     if (!Number.isInteger(info.port) || info.port < 1 || info.port > 65535) return null
-    const state = await call(info, 'status')
-    return state.instance_id === info.instance_id ? info : null
+    state = await call(info, 'status')
   } catch { return null }
+  if ((state.api_version ?? 1) !== 1 || (state.data_format_version ?? 1) !== 1 || String(state.version).split('.')[0] !== '2') {
+    throw new Error('正在运行的 Core 版本不兼容，请完成当前任务后升级。')
+  }
+  if (!Array.isArray(state.capabilities) || !state.capabilities.includes('executions')) {
+    throw new Error('当前 Core 进程尚未加载执行管理升级。请结束任务并关闭旧 Core 后重新启动 Studio。')
+  }
+  return state.instance_id === info.instance_id ? info : null
 }
 
 async function attach(info: Discovery): Promise<number> {
   if (quitting) throw new Error('Studio is closing')
   await call(info, 'lease', { client_id: clientId })
+  if (installation) installation.initialize = false
   connection = info
   // Stable non-secret connection hints survive Core's idle shutdown.
   const config = join(app.getPath('userData'), 'core-connection.json')
@@ -93,18 +107,21 @@ async function attach(info: Discovery): Promise<number> {
 }
 
 async function connectOrStart(): Promise<number> {
+  installation = await prepareInstallation()
   const existing = await discover()
   if (existing) return attach(existing)
   const root = dataDir()
   mkdirSync(join(root, 'runtime'), { recursive: true })
   const log = openSync(join(root, 'runtime', 'studio-core.log'), 'a')
-  const pythonHome = join(process.resourcesPath, 'python')
   const args = [join(componentDir(), 'main.py'), '--data-dir', root]
-  if (!existsSync(join(root, 'app.db'))) args.push('--init')
+  if (!existsSync(join(root, 'app.db'))) {
+    if (!installation.initialize) throw new Error('资料库数据库已丢失，拒绝创建空库替代。')
+    args.push('--init')
+  }
   const child = spawn(backgroundPython(), args, {
     cwd: componentDir(), detached: true, windowsHide: true, stdio: ['ignore', log, log],
-    env: { ...process.env, APP_BACKEND_DATA_DIR: root, APP_BACKEND_PORT: '0',
-      ...(!is.dev ? { PYTHONHOME: pythonHome, PYTHONPATH: '', PYTHONPYCACHEPREFIX: join(app.getPath('userData'), 'pycache') } : {}) }
+    env: { ...cleanPythonEnv(installation.runtime), APP_BACKEND_DATA_DIR: root, APP_BACKEND_PORT: '0',
+      PYTHONPYCACHEPREFIX: join(app.getPath('userData'), 'pycache') }
   })
   closeSync(log)
   let startupError: Error | null = null

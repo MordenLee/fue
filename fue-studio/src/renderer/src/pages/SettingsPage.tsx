@@ -13,6 +13,7 @@ import { useToast } from '../contexts/ToastContext'
 import { settingsService } from '../services/settings'
 import type { SettingsUpdate } from '../types/settings'
 import { useI18n } from '../i18n'
+import { InstallationPanel } from '../components/settings/InstallationPanel'
 
 type SectionKey = 'general' | 'chat' | 'rag' | 'parsing' | 'models'
 
@@ -115,6 +116,7 @@ export function SettingsPage() {
             <section>
               <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-6">{t('settings_page.section_general')}</h2>
               <div className="space-y-5">
+                <InstallationPanel />
                 <FormField label={t('settings.language_label')}>
                   <Select
                     value={current.language ?? 'zh'}
@@ -163,9 +165,10 @@ export function SettingsPage() {
                     onValueChange={v => handleChange({ chat_context_mode: v as 'legacy' | 'working' })}
                     options={['legacy', 'working'].map(value => ({ value, label: t(`working.mode_${value}`) }))} />
                 </FormField>
-                {current.chat_context_mode === 'working' && <div className="space-y-4">
-                  <p className="text-xs text-amber-600 dark:text-amber-400">{t('working.cost_hint')}</p>
-                  {(['chat_input_tokens', 'chat_output_tokens', 'chat_run_input_tokens', 'chat_run_output_tokens', 'chat_summary_chars', 'chat_summary_tokens'] as const).map(key => (
+                <div className="space-y-4">
+                  <p className="text-xs text-neutral-500">{t('execution.budget_hint')}</p>
+                  {current.chat_context_mode === 'working' && <p className="text-xs text-amber-600 dark:text-amber-400">{t('working.cost_hint')}</p>}
+                  {(['chat_input_tokens', 'chat_output_tokens', 'chat_run_input_tokens', 'chat_run_output_tokens', 'chat_summary_chars', 'chat_summary_tokens'] as const).filter(key => current.chat_context_mode === 'working' || !key.includes('summary')).map(key => (
                     <FormField key={key} label={t(`working.${key}`)}>
                       <NumberInput className="w-36" value={current[key] ?? 2000}
                         min={key.includes('summary') ? 256 : key.includes('input') ? 1024 : 128}
@@ -173,7 +176,7 @@ export function SettingsPage() {
                         onChange={v => handleChange({ [key]: v })} />
                     </FormField>
                   ))}
-                </div>}
+                </div>
                 <FormField label={t('settings_page.chat_history_turns')} description={t('settings_page.chat_history_turns_desc')}>
                   <NumberInput
                     className="w-28"

@@ -9,11 +9,12 @@ router = APIRouter(prefix="/api/v1/system")
 @router.get("/status")
 def status(request: Request):
     state = request.app.state.core
-    return {"schema_version": 1, "version": __version__, "instance_id": state.instance_id,
+    return {"schema_version": 1, "api_version": 1, "data_format_version": 1,
+            "version": __version__, "instance_id": state.instance_id,
             "data_dir": str(state.root), "role": request.state.core_role,
             "keep_alive": state.keep_alive, "studio_clients": len(state.leases),
             "idle_seconds": state.idle_seconds,
-            "capabilities": ["dataset", "memory.read", "tasks"]}
+            "capabilities": ["dataset", "memory.read", "tasks", "executions", "numbered_migrations"]}
 
 
 class Lease(BaseModel):

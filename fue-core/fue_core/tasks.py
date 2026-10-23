@@ -9,8 +9,9 @@ from uuid import uuid4
 from fastapi import APIRouter, Request, HTTPException, Query
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import Column, String, JSON, Integer
-from database import Base, SessionLocal
+from fue_core.database import Base, SessionLocal
 from fue_core.dataset.service import scope, evidence_id
+from fue_core.execution import append_event, read_events
 
 
 class ResearchTask(Base):
@@ -56,7 +57,7 @@ class TaskManager:
         fingerprint = hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
         with self.factory() as db:
             scope(db, payload.kb_ids, self.lifecycle.allowed_libraries)
-            from providers.chat import load_chat_model
+            from fue_core.providers.chat import load_chat_model
             if load_chat_model(payload.model_id, db) is None:
                 raise HTTPException(400, "Research model is unavailable")
             old = db.query(ResearchTask).filter_by(request_key=payload.request_key).first()
@@ -83,10 +84,7 @@ class TaskManager:
             row = db.get(ResearchTask, task_id)
             if row.state not in {"queued", "running"}:
                 return
-            events = list(row.events)
-            events.append({"sequence": len(events)+1, "type": kind, "data": data, "timestamp": int(time.time())})
-            row.events = events
-            db.commit()
+            append_event(db, task_id, kind, data)
 
     async def execute(self, task_id, payload):
         try:
@@ -117,15 +115,15 @@ class TaskManager:
                 db.commit()
 
     async def research(self, task_id, payload):
-        from agents.runner import AgentRunner
-        from agents.runtime import get_registry
-        from agents.tools import make_knowledge_binding, make_source_bindings
-        from agents.usage import UsageLedger
+        from fue_core.agents.runner import AgentRunner
+        from fue_core.agents.runtime import get_registry
+        from fue_core.agents.tools import make_knowledge_binding, make_source_bindings
+        from fue_core.agents.usage import UsageLedger
         from fue_core.platform.tokens import estimate
-        from providers.chat import load_chat_model, build_llm
+        from fue_core.providers.chat import load_chat_model, build_llm
         from langchain_core.messages import HumanMessage, SystemMessage
-        from knowledge.documents.models import DocumentFile
-        from chat.citations import build_rag_response
+        from fue_core.knowledge.documents.models import DocumentFile
+        from fue_core.chat.citations import build_rag_response
         with self.factory() as db:
             model = load_chat_model(payload.model_id, db)
             llm, context_length = build_llm(model), model.context_length
@@ -214,10 +212,15 @@ def task_row(task_id, request, db):
 def get(task_id: str, request: Request, after: int = Query(0, ge=0)):
     with SessionLocal() as db:
         row = task_row(task_id, request, db)
-        events = [e for e in row.events if e["sequence"] > after][:50]
+        events = read_events(db, task_id, after, 51)
+        more = len(events) > 50
+        events = events[:50]
+        if not events and row.events:
+            events = [e for e in row.events if e['sequence'] > after][:50]
+            more = bool(events and events[-1]['sequence'] < len(row.events))
         return {"task_id": row.id, "state": row.state, "result": row.result, "error": row.error,
                 "events": events, "last_sequence": events[-1]["sequence"] if events else after,
-                "more_events": bool(events and events[-1]["sequence"] < len(row.events))}
+                "more_events": more}
 
 
 @router.post("/{task_id}/cancel")

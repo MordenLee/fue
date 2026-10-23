@@ -6,10 +6,10 @@ import type { SSEEvent } from '../types/chat'
 let _baseUrl: string = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 let _baseUrlReady: Promise<string>
 
-if (window.api?.getBackendUrl) {
-  // getBackendUrl() only resolves after the main process has confirmed the backend
+if (window.api?.getCoreUrl) {
+  // getCoreUrl() only resolves after the main process has confirmed the backend
   // is responding to /api/ping — no need to poll again here.
-  _baseUrlReady = window.api.getBackendUrl().then((url) => {
+  _baseUrlReady = window.api.getCoreUrl().then((url) => {
     _baseUrl = url
     return url
   })
@@ -17,9 +17,9 @@ if (window.api?.getBackendUrl) {
   _baseUrlReady = Promise.resolve(_baseUrl)
 }
 
-async function resolveBackendUrl(forceRefresh = false): Promise<string> {
-  if (window.api?.getBackendUrl && forceRefresh) {
-    _baseUrlReady = window.api.getBackendUrl().then((url) => {
+async function resolveCoreUrl(forceRefresh = false): Promise<string> {
+  if (window.api?.getCoreUrl && forceRefresh) {
+    _baseUrlReady = window.api.getCoreUrl().then((url) => {
       _baseUrl = url
       return url
     })
@@ -27,24 +27,25 @@ async function resolveBackendUrl(forceRefresh = false): Promise<string> {
   return _baseUrlReady
 }
 
-async function fetchWithBackendRetry(input: string, init?: RequestInit): Promise<Response> {
-  await resolveBackendUrl()
+async function fetchWithCoreRetry(input: string, init?: RequestInit): Promise<Response> {
+  await resolveCoreUrl()
 
   try {
     return await fetch(`${getBaseUrl()}${input}`, init)
   } catch (error) {
-    if (!window.api?.getBackendUrl || !(error instanceof TypeError)) {
+    if (!window.api?.getCoreUrl || !(error instanceof TypeError) ||
+        !['GET', 'HEAD'].includes((init?.method ?? 'GET').toUpperCase())) {
       throw error
     }
 
-    await resolveBackendUrl(true)
+    await resolveCoreUrl(true)
     return fetch(`${getBaseUrl()}${input}`, init)
   }
 }
 
 /** Wait for the backend URL to be resolved before making API calls */
 export function waitForBackend(): Promise<string> {
-  return resolveBackendUrl()
+  return resolveCoreUrl()
 }
 
 function getBaseUrl(): string {
@@ -66,10 +67,10 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (init?.body && !(init.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json'
   }
-  const res = await fetchWithBackendRetry(path, { ...init, headers })
+  const res = await fetchWithCoreRetry(path, { ...init, headers })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, body.detail ?? res.statusText)
+    throw new ApiError(res.status, typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail ?? res.statusText))
   }
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
@@ -82,9 +83,18 @@ export function streamRequest(
 ): AbortController {
   const controller = new AbortController()
   let sawDone = false
+  const runId = path.startsWith('/api/chat/') ? crypto.randomUUID() : undefined
+  if (runId) {
+    body = { ...body, request_id: runId }
+    onEvent({ type: 'activity', data: { type: 'run_started', run_id: runId } })
+    controller.signal.addEventListener('abort', () => {
+      void request(`/api/executions/${runId}/cancel`, { method: 'POST' }).catch(() => {})
+      onEvent({ type: 'activity', data: { type: 'cancellation_requested', run_id: runId } })
+    }, { once: true })
+  }
 
   ;(async () => {
-    const res = await fetchWithBackendRetry(path, {
+    const res = await fetchWithCoreRetry(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -93,7 +103,7 @@ export function streamRequest(
 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}))
-      onEvent({ type: 'error', data: errBody.detail ?? res.statusText })
+      onEvent({ type: 'error', data: typeof errBody.detail === 'string' ? errBody.detail : JSON.stringify(errBody.detail ?? res.statusText) })
       return
     }
 
@@ -140,10 +150,9 @@ export function streamRequest(
       }
     }
 
-    // Some backend/provider paths may close the stream without an explicit
-    // [DONE] marker. Treat EOF as done so UI can finalize the turn.
+    // EOF is not proof of successful persistence or provider completion.
     if (!sawDone && !controller.signal.aborted) {
-      onEvent({ type: 'done' })
+      onEvent({ type: 'error', data: '连接中断，回答可能尚未完成。请检查原执行状态，避免重复发送。' })
     }
   })().catch((err) => {
     if (err.name !== 'AbortError') {

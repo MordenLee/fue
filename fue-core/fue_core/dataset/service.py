@@ -1,11 +1,11 @@
 """Public Dataset reading, with content-bound evidence and explicit scope."""
 import hashlib
 from fastapi import HTTPException
-from knowledge.models import KnowledgeBase
-from knowledge.documents.models import DocumentFile
-from knowledge.chroma import get_chroma_client
+from fue_core.knowledge.models import KnowledgeBase
+from fue_core.knowledge.documents.models import DocumentFile
+from fue_core.knowledge.chroma import get_chroma_client
 from fue_core.dataset.retrieval import make_search_tool
-from settings.service import setting
+from fue_core.settings.service import setting
 
 
 def libraries(db, allowed=None):

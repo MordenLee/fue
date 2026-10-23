@@ -15,14 +15,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from database import Base, get_db
-import providers, knowledge, conversations, folders
-from providers.models import Provider, AIModel
-from knowledge.models import KnowledgeBase
-from knowledge.documents.models import DocumentFile, Citation
-from knowledge.router import router
-from knowledge.documents.router import router as documents_router
-from knowledge.transfer import PROFILE_KEY, profile, digest
+from fue_core.database import Base, get_db
+from fue_core import providers, knowledge, conversations, folders
+from fue_core.providers.models import Provider, AIModel
+from fue_core.knowledge.models import KnowledgeBase
+from fue_core.knowledge.documents.models import DocumentFile, Citation
+from fue_core.knowledge.router import router
+from fue_core.knowledge.documents.router import router as documents_router
+from fue_core.knowledge.transfer import PROFILE_KEY, profile, digest
 from fue_core.dataset import service
 
 
@@ -40,10 +40,10 @@ class TransferTests(unittest.TestCase):
             yield self.db
         app.dependency_overrides[get_db] = session
         self.http = TestClient(app)
-        self.patches = [patch('knowledge.chroma.get_chroma_client', return_value=self.chroma),
+        self.patches = [patch('fue_core.knowledge.chroma.get_chroma_client', return_value=self.chroma),
                         patch('fue_core.dataset.service.get_chroma_client', return_value=self.chroma),
-                        patch('providers.embeddings.build_embedder', side_effect=AssertionError('Paid embedding call')),
-                        patch('providers.chat.build_llm', side_effect=AssertionError('Paid chat call'))]
+                        patch('fue_core.providers.embeddings.build_embedder', side_effect=AssertionError('Paid embedding call')),
+                        patch('fue_core.providers.chat.build_llm', side_effect=AssertionError('Paid chat call'))]
         for p in self.patches: p.start()
         provider = Provider(name='offline', interface_type='openai_compatible', api_base_url='https://example.invalid/v1', api_key='SECRET-DO-NOT-EXPORT')
         self.db.add(provider)
