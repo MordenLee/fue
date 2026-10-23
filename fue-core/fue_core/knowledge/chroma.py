@@ -1,9 +1,14 @@
 """ChromaDB client singleton and helper functions."""
 
+from __future__ import annotations
+
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
+from threading import Lock
 
-import chromadb
+if TYPE_CHECKING:
+    import chromadb
 
 # ChromaDB 持久化存储目录，放在项目根目录下的 chroma_data/
 from fue_core.platform.paths import data_dir
@@ -15,14 +20,18 @@ _CHROMA_DIR = _DATA_DIR / "chroma_data"
 COLLECTION_PREFIX = "kb_"
 
 _client: chromadb.ClientAPI | None = None
+_client_lock = Lock()
 
 
 def get_chroma_client() -> chromadb.ClientAPI:
     """Return a singleton persistent ChromaDB client."""
     global _client
     if _client is None:
-        _CHROMA_DIR.mkdir(parents=True, exist_ok=True)
-        _client = chromadb.PersistentClient(path=str(_CHROMA_DIR))
+        with _client_lock:
+            if _client is None:
+                import chromadb
+                _CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+                _client = chromadb.PersistentClient(path=str(_CHROMA_DIR))
     return _client
 
 

@@ -4,22 +4,11 @@ import type { SSEEvent } from '../types/chat'
 // Resolved at startup via IPC from Electron main process.
 // Falls back to env variable or default for non-Electron development.
 let _baseUrl: string = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
-let _baseUrlReady: Promise<string>
-
-if (window.api?.getCoreUrl) {
-  // getCoreUrl() only resolves after the main process has confirmed the backend
-  // is responding to /api/ping — no need to poll again here.
-  _baseUrlReady = window.api.getCoreUrl().then((url) => {
-    _baseUrl = url
-    return url
-  })
-} else {
-  _baseUrlReady = Promise.resolve(_baseUrl)
-}
+let _baseUrlReady: Promise<string> | undefined
 
 async function resolveCoreUrl(forceRefresh = false): Promise<string> {
-  if (window.api?.getCoreUrl && forceRefresh) {
-    _baseUrlReady = window.api.getCoreUrl().then((url) => {
+  if (!_baseUrlReady || forceRefresh) {
+    _baseUrlReady = (window.api?.getCoreUrl ? window.api.getCoreUrl() : Promise.resolve(_baseUrl)).then((url) => {
       _baseUrl = url
       return url
     })
@@ -44,8 +33,8 @@ async function fetchWithCoreRetry(input: string, init?: RequestInit): Promise<Re
 }
 
 /** Wait for the backend URL to be resolved before making API calls */
-export function waitForBackend(): Promise<string> {
-  return resolveCoreUrl()
+export function waitForBackend(retry = false): Promise<string> {
+  return resolveCoreUrl(retry)
 }
 
 function getBaseUrl(): string {

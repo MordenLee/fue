@@ -121,7 +121,9 @@ async function connectOrStart(): Promise<number> {
   const child = spawn(backgroundPython(), args, {
     cwd: componentDir(), detached: true, windowsHide: true, stdio: ['ignore', log, log],
     env: { ...cleanPythonEnv(installation.runtime), APP_BACKEND_DATA_DIR: root, APP_BACKEND_PORT: '0',
-      PYTHONPYCACHEPREFIX: join(app.getPath('userData'), 'pycache') }
+      // Development can reuse the venv's existing bytecode. Packaged installs
+      // keep bytecode in userData because their runtime may be read-only.
+      ...(!is.dev ? { PYTHONPYCACHEPREFIX: join(app.getPath('userData'), 'pycache') } : {}) }
   })
   closeSync(log)
   let startupError: Error | null = null

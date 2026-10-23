@@ -9,6 +9,12 @@ import { installationInfo, installHostSkill, openWorkspaceNextLaunch, checkHostS
 
 // ─── File logging (production only) ───
 let _logFile: string | null = null
+const startupAt = performance.now()
+function startupTiming(stage: string): void {
+  const message = `[startup] ${stage}: ${Math.round(performance.now() - startupAt)}ms`
+  console.info(message)
+  flog(message)
+}
 function initLog(): void {
   if (is.dev) return
   const logDir = join(app.getPath('userData'), 'logs')
@@ -78,6 +84,7 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    startupTiming('window-visible')
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -133,16 +140,14 @@ app.whenReady().then(async () => {
     return result.canceled ? [] : result.filePaths
   })
 
-  try {
-    await ensureCore()
-  } catch (error) {
-    dialog.showErrorBox('Core startup failed', error instanceof Error ? error.message : String(error))
-    app.quit()
-    return
-  }
-
-  // Backend is ready — create and show the main window
+  // Render the startup UI immediately; Core and renderer initialize in parallel.
   createWindow()
+  startupTiming('window-created')
+  void ensureCore().then(() => startupTiming('core-ready')).catch(error => {
+    // Renderer shows the error and offers retry instead of silently closing.
+    console.error('Core startup failed:', error)
+    flog(`Core startup failed: ${String(error)}`)
+  })
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

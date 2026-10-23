@@ -5,7 +5,6 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # ---------------------------------------------------------------------------
 # Semantic delimiter separators for structural-aware text splitting.
@@ -256,6 +255,7 @@ def index_document(db: Session, document_file_id: int) -> None:
         if kb.use_delimiter_split:
             splitter_kwargs["separators"] = _SEMANTIC_SEPARATORS
             splitter_kwargs["is_separator_regex"] = False
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
         splitter = RecursiveCharacterTextSplitter(**splitter_kwargs)
         chunks = splitter.split_text(clean_text)
         if not chunks:
